@@ -1,0 +1,13 @@
+version: '3'
+
+tasks:
+  setup:
+    desc: "Start the TUI setup wizard (handles env, secrets, and containers internally)"
+    cmds:
+      - go run ./cmd/tidefly-installer
+    silent: false
+
+  stop:
+    desc: "Stop dev containers (handled inside TUI or manually)"
+    cmds:
+      - echo "Use the TUI or run 'docker compose down' in backend/development if needed"

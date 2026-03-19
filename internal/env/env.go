@@ -7,9 +7,26 @@ import (
 	"strings"
 )
 
-// Load lädt die .env — sucht von cwd aufwärts nach deploy/dev/.env
+var DefaultEnv = "development"
+
+func Root() string {
+	cwd, _ := os.Getwd()
+	if filepath.Base(cwd) == "tui" {
+		return filepath.Dir(cwd)
+	}
+	if _, err := os.Stat(filepath.Join(cwd, "tui")); err == nil {
+		return cwd
+	}
+	return filepath.Dir(cwd)
+}
+
 func Load(extraPaths ...string) error {
-	candidates := buildCandidates(extraPaths...)
+	envType := os.Getenv("ENV_CHOICE")
+	if envType == "" {
+		envType = DefaultEnv
+	}
+
+	candidates := buildCandidates(envType, extraPaths...)
 	for _, p := range candidates {
 		if err := loadFile(p); err == nil {
 			return nil
@@ -18,7 +35,6 @@ func Load(extraPaths ...string) error {
 	return nil
 }
 
-// GetOrLoad gibt einen Env-Wert zurück — lädt .env falls nötig
 func GetOrLoad(key string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -27,34 +43,15 @@ func GetOrLoad(key string) string {
 	return os.Getenv(key)
 }
 
-func buildCandidates(extra ...string) []string {
-	cwd, _ := os.Getwd()
-	var paths []string
+func buildCandidates(envType string, extra ...string) []string {
+	cwd := filepath.Join(Root(), "tidefly-backend")
 
-	// Extra Pfade zuerst
+	var paths []string
 	paths = append(paths, extra...)
 
-	// Von cwd aufwärts nach deploy/dev/.env suchen
-	dir := cwd
-	for i := 0; i < 8; i++ {
-		paths = append(paths, filepath.Join(dir, "deploy", "dev", ".env"))
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-
-	// Von cwd aufwärts nach .env suchen
-	dir = cwd
-	for i := 0; i < 8; i++ {
-		paths = append(paths, filepath.Join(dir, ".env"))
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
+	// richtige Pfade
+	paths = append(paths, filepath.Join(cwd, "deploy", envType, ".env")) // z.B. deploy/development/.env
+	paths = append(paths, filepath.Join(cwd, ".env"))                    // optional: fallback
 
 	return paths
 }
@@ -68,7 +65,7 @@ func loadFile(path string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
@@ -83,7 +80,7 @@ func loadFile(path string) error {
 		key := strings.TrimSpace(parts[0])
 		value := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
 		if os.Getenv(key) == "" {
-			os.Setenv(key, value)
+			_ = os.Setenv(key, value)
 		}
 	}
 	return scanner.Err()
