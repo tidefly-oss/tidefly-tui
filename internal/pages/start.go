@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/codifystudios/tidefly/tui/internal/env"
 
 	"github.com/codifystudios/tidefly/tui/internal/styles"
 )
@@ -39,33 +40,6 @@ type StartModel struct {
 	hasError bool
 }
 
-// root gibt den Projekt-Root zurück.
-// task installer ruft "cd tui && go run ..." auf — cwd ist tui/.
-func root() string {
-	cwd, _ := os.Getwd()
-	if filepath.Base(cwd) == "tui" {
-		return filepath.Dir(cwd)
-	}
-	// direkt vom Root gestartet
-	if _, err := os.Stat(filepath.Join(cwd, "tui")); err == nil {
-		return cwd
-	}
-	return filepath.Dir(cwd)
-}
-
-func composePaths(prod bool) (composeF, envF string) {
-	r := root()
-	if prod {
-		return filepath.Join(r, "deploy", "prod", "docker-compose.yaml"),
-			filepath.Join(r, "deploy", "prod", ".env")
-	}
-	return filepath.Join(r, "deploy", "dev", "docker-compose.yaml"),
-		filepath.Join(r, "deploy", "dev", ".env")
-}
-
-func scriptsDir() string { return filepath.Join(root(), "scripts") }
-func backendDir() string { return filepath.Join(root(), "backend") }
-
 func NewStart(cfg SetupConfig) *StartModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
@@ -74,20 +48,15 @@ func NewStart(cfg SetupConfig) *StartModel {
 }
 
 func buildSteps(cfg SetupConfig) []startStep {
-	// Dev: nur Infra (kein Frontend-Container)
-	// Prod: Backend + optional Frontend
-	coreLabel := "Starting infrastructure (Traefik, Postgres, Redis, Mailpit)"
+	coreLabel := "Starting infrastructure"
 	if cfg.Environment == "production" {
 		coreLabel = "Starting services (Traefik, Postgres, Redis, Backend"
 		if cfg.WithDashboard {
 			coreLabel += ", Frontend"
 		}
-		if cfg.MinIO {
-			coreLabel += ", MinIO"
-		}
 		coreLabel += ")"
-	} else if cfg.MinIO {
-		coreLabel = "Starting infrastructure (Traefik, Postgres, Redis, Mailpit, MinIO)"
+	} else {
+		coreLabel = "Starting services (Traefik, Postgres, Redis, Mailpit)"
 	}
 
 	return []startStep{
@@ -117,11 +86,17 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 		runtime = "docker"
 	}
 
-	cf, ef := composePaths(isProd)
+	// Backend paths
+	backendRoot := filepath.Join(env.Root(), "tidefly-backend")
+	deployPath := filepath.Join(backendRoot, "deploy")
 
-	composeArgs := func(extra ...string) []string {
-		args := []string{"compose", "-f", cf, "--env-file", ef}
-		return append(args, extra...)
+	var cf, envFile string
+	if isProd {
+		cf = filepath.Join(deployPath, "production", "docker-compose.yaml")
+		envFile = filepath.Join(deployPath, "production", ".env")
+	} else {
+		cf = filepath.Join(deployPath, "development", "docker-compose.yaml")
+		envFile = filepath.Join(deployPath, "development", ".env")
 	}
 
 	podmanSock := cfg.SocketPath
@@ -130,9 +105,10 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 	}
 
 	withEnv := func(cmd *exec.Cmd) *exec.Cmd {
+		cmd.Env = append(os.Environ(), "ENV_TYPE="+cfg.Environment)
 		if runtime == "podman" {
 			cmd.Env = append(
-				os.Environ(),
+				cmd.Env,
 				"DOCKER_HOST=unix://"+podmanSock,
 				"DOCKER_SOCK="+podmanSock,
 			)
@@ -151,15 +127,12 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 
 		switch {
 		case strings.HasPrefix(label, "Generating secrets"):
-			scriptPath := filepath.Join(scriptsDir(), "rotate-secrets.sh")
+			scriptPath := filepath.Join(backendRoot, "scripts", "init-env.sh")
 			if _, statErr := os.Stat(scriptPath); statErr != nil {
-				err = fmt.Errorf("script not found: %s (root: %s)", scriptPath, root())
+				err = fmt.Errorf("script not found: %s (root: %s)", scriptPath, env.Root())
 				break
 			}
 			err = runScript(scriptPath)
-			if err == nil && cfg.MinIO {
-				_ = runScript(scriptPath, "--minio")
-			}
 
 		case strings.HasPrefix(label, "Writing environment"):
 			vars := map[string]string{
@@ -183,52 +156,32 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 				vars["SMTP_FROM"] = cfg.SMTPFrom
 				vars["SMTP_TLS"] = cfg.SMTPTLS
 			}
-			// MinIO profile — nur in Dev via profiles, in Prod immer im Compose
-			if !isProd {
-				if cfg.MinIO {
-					vars["COMPOSE_PROFILES"] = "minio"
-				} else {
-					vars["COMPOSE_PROFILES"] = ""
-				}
-			}
-			err = writeEnvVars(ef, vars)
+			err = writeEnvVars(envFile, vars)
 
 		case strings.HasPrefix(label, "Starting"):
 			if _, statErr := os.Stat(cf); statErr != nil {
 				err = fmt.Errorf("compose file not found: %s", cf)
 				break
 			}
-			if _, statErr := os.Stat(ef); statErr != nil {
-				err = fmt.Errorf("env file not found: %s", ef)
+			if _, statErr := os.Stat(envFile); statErr != nil {
+				err = fmt.Errorf("env file not found: %s", envFile)
 				break
 			}
 
-			var args []string
 			var services []string
+			args := []string{"compose", "-f", cf, "--env-file", envFile, "up", "-d"}
 
 			if isProd {
-				// Prod: Backend + optional Frontend/MinIO via profiles
 				services = []string{"traefik", "postgres", "redis", "backend"}
-				args = []string{"up", "-d"}
 				if cfg.WithDashboard {
 					args = append([]string{"--profile", "dashboard"}, args...)
 					services = append(services, "frontend")
 				}
-				if cfg.MinIO {
-					args = append([]string{"--profile", "minio"}, args...)
-					services = append(services, "minio")
-				}
 			} else {
-				// Dev: nur Infra — kein Frontend-Container
 				services = []string{"traefik", "postgres", "redis", "mailpit"}
-				args = []string{"up", "-d"}
-				if cfg.MinIO {
-					args = append([]string{"--profile", "minio"}, args...)
-					services = append(services, "minio")
-				}
 			}
 
-			cmd := withEnv(exec.Command(runtime, append(composeArgs(args...), services...)...))
+			cmd := withEnv(exec.Command(runtime, append(args, services...)...))
 			out, e := cmd.CombinedOutput()
 			if e != nil {
 				err = fmt.Errorf("compose up failed: %s", strings.TrimSpace(string(out)))
@@ -277,7 +230,7 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 				"bash", "-c",
 				fmt.Sprintf(
 					"cd %s && set -a && source %s && set +a && go run ./cmd/tidefly --migrate-only",
-					backendDir(), ef,
+					backendRoot, envFile,
 				),
 			).CombinedOutput()
 			if e != nil {

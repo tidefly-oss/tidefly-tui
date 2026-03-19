@@ -48,7 +48,6 @@ func (m *DoneModel) View() string {
 		"",
 	)
 
-	// Primary access URL
 	primaryURL := ""
 	if cfg.WithDashboard {
 		if cfg.TraefikEnabled && cfg.TraefikDomain != "" {
@@ -68,7 +67,6 @@ func (m *DoneModel) View() string {
 		"",
 	)
 
-	// Dev links
 	links := ""
 	if cfg.Environment == "development" {
 		links = lipgloss.JoinVertical(
@@ -79,12 +77,7 @@ func (m *DoneModel) View() string {
 			styles.Help.Render("  Mailpit     → http://mailpit.localhost"),
 			styles.Help.Render("  Traefik     → http://traefik.localhost"),
 		)
-		if cfg.MinIO {
-			links += "\n" + styles.Help.Render("  MinIO       → http://minio.localhost")
-			links += "\n" + styles.Help.Render("  S3 API      → http://s3.localhost")
-		}
 	} else {
-		// Prod links
 		if cfg.TraefikEnabled {
 			links = lipgloss.JoinVertical(
 				lipgloss.Left,

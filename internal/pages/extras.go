@@ -20,18 +20,6 @@ type extraOption struct {
 	enabled bool
 }
 
-func NewExtras(cfg SetupConfig) *ExtrasModel {
-	return &ExtrasModel{
-		cfg: cfg,
-		options: []extraOption{
-			{
-				label: "MinIO",
-				desc:  "S3-compatible object storage — for backups and file storage",
-			},
-		},
-	}
-}
-
 func (m *ExtrasModel) Init() tea.Cmd { return nil }
 
 func (m *ExtrasModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -49,7 +37,6 @@ func (m *ExtrasModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case msg.String() == " ":
 			m.options[m.cursor].enabled = !m.options[m.cursor].enabled
 		case key.Matches(msg, keys.Enter):
-			m.cfg.MinIO = m.options[0].enabled
 			cfg := m.cfg
 			return m, func() tea.Msg {
 				return NavigateTo{Page: PageStart, Config: cfg}

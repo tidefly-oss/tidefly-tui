@@ -80,14 +80,13 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.current = pages.NewTraefik(m.cfg)
 		case pages.PageSMTP:
 			m.current = pages.NewSMTP(m.cfg)
-		case pages.PageExtras:
-			m.current = pages.NewExtras(m.cfg)
 		case pages.PageStart:
 			m.current = pages.NewStart(m.cfg)
 		case pages.PageAdmin:
 			m.current = pages.NewAdmin()
 		case pages.PageDone:
 			m.current = pages.NewDone(m.cfg)
+		case pages.PageExtras:
 		}
 		return m, m.current.Init()
 	}
@@ -115,7 +114,6 @@ func mergeConfig(dst *pages.SetupConfig, src pages.SetupConfig) {
 	if src.Environment != "" {
 		dst.Environment = src.Environment
 	}
-	// Booleans are always merged (they can legitimately be false)
 	dst.WithDashboard = src.WithDashboard
 	dst.TraefikEnabled = src.TraefikEnabled
 	if src.TraefikDomain != "" {
@@ -144,7 +142,6 @@ func mergeConfig(dst *pages.SetupConfig, src pages.SetupConfig) {
 	if src.SMTPTLS != "" {
 		dst.SMTPTLS = src.SMTPTLS
 	}
-	dst.MinIO = src.MinIO
 }
 
 func main() {

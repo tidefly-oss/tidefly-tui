@@ -50,8 +50,6 @@ type SetupConfig struct {
 	SMTPPassword string
 	SMTPFrom     string
 	SMTPTLS      string
-
-	MinIO bool
 }
 
 var (
@@ -63,6 +61,3 @@ func SetSize(w, h int) {
 	termWidth = w
 	termHeight = h
 }
-
-func Width() int  { return termWidth }
-func Height() int { return termHeight }

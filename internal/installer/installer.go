@@ -15,7 +15,6 @@ const (
 	Podman Runtime = "podman"
 )
 
-// InstallResult is returned after an install attempt.
 type InstallResult struct {
 	Runtime Runtime
 	Success bool
@@ -23,17 +22,6 @@ type InstallResult struct {
 	Err     error
 }
 
-// IsInstalled returns true if the given runtime binary exists and responds.
-func IsInstalled(rt Runtime) bool {
-	_, err := exec.LookPath(string(rt))
-	if err != nil {
-		return false
-	}
-	return exec.Command(string(rt), "info").Run() == nil
-}
-
-// Install runs the official install script for the given runtime.
-// Streams output line-by-line via the provided channel.
 func Install(rt Runtime, lines chan<- string) error {
 	goos := runtime.GOOS
 
@@ -50,7 +38,6 @@ func Install(rt Runtime, lines chan<- string) error {
 func installDocker(goos string, lines chan<- string) error {
 	switch goos {
 	case "linux":
-		// Official Docker convenience script — https://get.docker.com
 		send(lines, "Downloading Docker install script from get.docker.com...")
 		cmd := exec.Command("sh", "-c", "curl -fsSL https://get.docker.com | sh")
 		return runStreamed(cmd, lines)
@@ -66,7 +53,6 @@ func installDocker(goos string, lines chan<- string) error {
 func installPodman(goos string, lines chan<- string) error {
 	switch goos {
 	case "linux":
-		// Detect distro and use appropriate package manager
 		distro := detectDistro()
 		send(lines, fmt.Sprintf("Detected Linux distro: %s", distro))
 
@@ -108,7 +94,6 @@ func installPodman(goos string, lines chan<- string) error {
 	}
 }
 
-// PostInstallSetup runs any required post-install steps (e.g. rootless Podman socket).
 func PostInstallSetup(rt Runtime, lines chan<- string) error {
 	if rt != Podman {
 		return nil
@@ -127,6 +112,9 @@ func PostInstallSetup(rt Runtime, lines chan<- string) error {
 }
 
 func detectDistro() string {
+	if runtime.GOOS != "linux" {
+		return runtime.GOOS
+	}
 	data, err := os.ReadFile("/etc/os-release")
 	if err != nil {
 		return "unknown"

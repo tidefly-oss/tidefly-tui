@@ -20,8 +20,8 @@ const (
 
 type TraefikModel struct {
 	step    traefikStep
-	enabled bool // toggle state
-	cursor  int  // for staging toggle
+	enabled bool
+	cursor  int
 
 	domainInput textinput.Model
 	emailInput  textinput.Model
@@ -53,14 +53,12 @@ func (m *TraefikModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch m.step {
 
-		// ── Step 0: Enable toggle ─────────────────────────────────────────
 		case traefikStepToggle:
 			switch {
 			case key.Matches(msg, keys.Up), key.Matches(msg, keys.Down):
 				m.enabled = !m.enabled
 			case key.Matches(msg, keys.Enter):
 				if !m.enabled {
-					// Skip Traefik config entirely
 					m.cfg.TraefikEnabled = false
 					cfg := m.cfg
 					return m, func() tea.Msg {
@@ -74,7 +72,6 @@ func (m *TraefikModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 
-		// ── Step 1: Domain input ──────────────────────────────────────────
 		case traefikStepDomain:
 			switch {
 			case key.Matches(msg, keys.Enter):
@@ -93,7 +90,6 @@ func (m *TraefikModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 
-		// ── Step 2: ACME email ────────────────────────────────────────────
 		case traefikStepEmail:
 			switch {
 			case key.Matches(msg, keys.Enter):
@@ -102,7 +98,7 @@ func (m *TraefikModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.step = traefikStepStaging
 				m.emailInput.Blur()
-				m.cursor = 1 // default: no staging (production CA)
+				m.cursor = 1
 				return m, nil
 			case key.Matches(msg, keys.Quit):
 				return m, tea.Quit
@@ -112,7 +108,6 @@ func (m *TraefikModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 
-		// ── Step 3: Staging toggle ────────────────────────────────────────
 		case traefikStepStaging:
 			switch {
 			case key.Matches(msg, keys.Up), key.Matches(msg, keys.Down):

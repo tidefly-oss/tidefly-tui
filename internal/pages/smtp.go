@@ -72,14 +72,12 @@ func (m *SMTPModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// ── Step 0: toggle ────────────────────────────────────────────────
 		case 0:
 			switch {
-			case key.Matches(msg, keys.Up), key.Matches(msg, keys.Down):
-				m.enabled = !m.enabled
 			case key.Matches(msg, keys.Enter):
 				if !m.enabled {
 					m.cfg.SMTPEnabled = false
 					cfg := m.cfg
 					return m, func() tea.Msg {
-						return NavigateTo{Page: PageExtras, Config: cfg}
+						return NavigateTo{Page: PageStart, Config: cfg}
 					}
 				}
 				m.step = 1
@@ -147,7 +145,7 @@ func (m *SMTPModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cfg.SMTPTLS = tlsValues[m.tlsCursor]
 				cfg := m.cfg
 				return m, func() tea.Msg {
-					return NavigateTo{Page: PageExtras, Config: cfg}
+					return NavigateTo{Page: PageStart, Config: cfg}
 				}
 			case key.Matches(msg, keys.Quit):
 				return m, tea.Quit
