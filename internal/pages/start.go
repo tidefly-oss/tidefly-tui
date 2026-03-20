@@ -2,6 +2,7 @@ package pages
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -48,7 +49,7 @@ func NewStart(cfg SetupConfig) *StartModel {
 }
 
 func buildSteps(cfg SetupConfig) []startStep {
-	coreLabel := "Starting infrastructure"
+	var coreLabel string
 	if cfg.Environment == EnvProduction {
 		coreLabel = "Starting services (Traefik, Postgres, Redis, Backend"
 		if cfg.WithDashboard {
@@ -181,7 +182,7 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 				services = []string{"traefik", "postgres", "redis", "mailpit"}
 			}
 
-			cmd := withEnv(exec.Command(runtime, append(args, services...)...))
+			cmd := withEnv(exec.CommandContext(context.Background(), runtime, append(args, services...)...))
 			out, e := cmd.CombinedOutput()
 			if e != nil {
 				err = fmt.Errorf("compose up failed: %s", strings.TrimSpace(string(out)))
@@ -191,11 +192,14 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 			deadline := time.Now().Add(60 * time.Second)
 			ready := false
 			for time.Now().Before(deadline) {
-				out, e := exec.Command(
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				out, e := exec.CommandContext(
+					ctx,
 					runtime, "inspect",
 					"--format", "{{.State.Health.Status}}",
 					"tidefly_postgres",
 				).Output()
+				cancel()
 				if e == nil && strings.TrimSpace(string(out)) == "healthy" {
 					ready = true
 					break
@@ -226,13 +230,15 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 			}
 
 		case strings.HasPrefix(label, "Running database"):
-			out, e := exec.Command(
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			out, e := exec.CommandContext(ctx,
 				"bash", "-c",
 				fmt.Sprintf(
 					"cd %s && set -a && source %s && set +a && go run ./cmd/tidefly --migrate-only",
 					backendRoot, envFile,
 				),
 			).CombinedOutput()
+			cancel()
 			if e != nil {
 				err = fmt.Errorf("migrations failed: %s", strings.TrimSpace(string(out)))
 			}
@@ -336,7 +342,8 @@ func (m *StartModel) View() string {
 }
 
 func runScript(path string, args ...string) error {
-	cmd := exec.Command("bash", append([]string{path}, args...)...)
+	ctx := context.Background()
+	cmd := exec.CommandContext(ctx, "bash", append([]string{path}, args...)...)
 	return cmd.Run()
 }
 
