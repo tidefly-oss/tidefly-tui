@@ -211,27 +211,34 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 			}
 
 		case strings.HasPrefix(label, "Waiting for Redis"):
-			deadline := time.Now().Add(30 * time.Second)
 			ready := false
+
+			deadline := time.Now().Add(30 * time.Second)
 			for time.Now().Before(deadline) {
-				out, e := exec.Command(
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				out, err := exec.CommandContext(
+					ctx,
 					runtime, "inspect",
 					"--format", "{{.State.Health.Status}}",
 					"tidefly_redis",
 				).Output()
-				if e == nil && strings.TrimSpace(string(out)) == "healthy" {
+				cancel()
+
+				if err == nil && strings.TrimSpace(string(out)) == "healthy" {
 					ready = true
 					break
 				}
 				time.Sleep(2 * time.Second)
 			}
+
 			if !ready {
 				err = fmt.Errorf("redis not healthy after 30s")
 			}
 
 		case strings.HasPrefix(label, "Running database"):
 			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-			out, e := exec.CommandContext(ctx,
+			out, e := exec.CommandContext(
+				ctx,
 				"bash", "-c",
 				fmt.Sprintf(
 					"cd %s && set -a && source %s && set +a && go run ./cmd/tidefly --migrate-only",

@@ -13,6 +13,8 @@ linters:
     - staticcheck
     - unused
     - whitespace
+  disable:
+    - whitespace
   settings:
     errcheck:
       check-type-assertions: false

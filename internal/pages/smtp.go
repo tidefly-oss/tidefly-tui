@@ -65,14 +65,13 @@ func NewSMTP(cfg SetupConfig) *SMTPModel {
 func (m *SMTPModel) Init() tea.Cmd { return textinput.Blink }
 
 func (m *SMTPModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch m.step {
 
 		// ── Step 0: toggle ────────────────────────────────────────────────
 		case 0:
 			switch {
-			case key.Matches(msg, keys.Enter):
+			case key.Matches(keyMsg, keys.Enter):
 				if !m.enabled {
 					m.cfg.SMTPEnabled = false
 					cfg := m.cfg
@@ -83,19 +82,19 @@ func (m *SMTPModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.step = 1
 				m.inputs[0].Focus()
 				return m, textinput.Blink
-			case key.Matches(msg, keys.Quit):
+			case key.Matches(keyMsg, keys.Quit):
 				return m, tea.Quit
 			}
 
 		// ── Step 1: fields ────────────────────────────────────────────────
 		case 1:
 			switch {
-			case key.Matches(msg, keys.Tab), key.Matches(msg, keys.Down):
+			case key.Matches(keyMsg, keys.Tab), key.Matches(keyMsg, keys.Down):
 				m.inputs[m.focused].Blur()
 				m.focused = (m.focused + 1) % smtpFieldCount
 				m.inputs[m.focused].Focus()
 				return m, textinput.Blink
-			case key.Matches(msg, keys.Up):
+			case key.Matches(keyMsg, keys.Up):
 				m.inputs[m.focused].Blur()
 				if m.focused == 0 {
 					m.focused = smtpFieldCount - 1
@@ -104,7 +103,7 @@ func (m *SMTPModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.inputs[m.focused].Focus()
 				return m, textinput.Blink
-			case key.Matches(msg, keys.Enter):
+			case key.Matches(keyMsg, keys.Enter):
 				if m.focused < smtpFieldCount-1 {
 					m.inputs[m.focused].Blur()
 					m.focused++
@@ -115,26 +114,22 @@ func (m *SMTPModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.inputs[m.focused].Blur()
 				m.step = 2
 				return m, nil
-			case key.Matches(msg, keys.Quit):
+			case key.Matches(keyMsg, keys.Quit):
 				return m, tea.Quit
-			default:
-				var cmd tea.Cmd
-				m.inputs[m.focused], cmd = m.inputs[m.focused].Update(msg)
-				return m, cmd
 			}
 
 		// ── Step 2: TLS ───────────────────────────────────────────────────
 		case 2:
 			switch {
-			case key.Matches(msg, keys.Up):
+			case key.Matches(keyMsg, keys.Up):
 				if m.tlsCursor > 0 {
 					m.tlsCursor--
 				}
-			case key.Matches(msg, keys.Down):
+			case key.Matches(keyMsg, keys.Down):
 				if m.tlsCursor < 2 {
 					m.tlsCursor++
 				}
-			case key.Matches(msg, keys.Enter):
+			case key.Matches(keyMsg, keys.Enter):
 				tlsValues := []string{"none", "starttls", "tls"}
 				m.cfg.SMTPEnabled = true
 				m.cfg.SMTPHost = m.inputs[smtpHost].Value()
@@ -147,9 +142,16 @@ func (m *SMTPModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, func() tea.Msg {
 					return NavigateTo{Page: PageStart, Config: cfg}
 				}
-			case key.Matches(msg, keys.Quit):
+			case key.Matches(keyMsg, keys.Quit):
 				return m, tea.Quit
 			}
+		}
+
+		// Handle inputs
+		if m.step == 1 {
+			var cmd tea.Cmd
+			m.inputs[m.focused], cmd = m.inputs[m.focused].Update(keyMsg)
+			return m, cmd
 		}
 	}
 	return m, nil

@@ -45,8 +45,6 @@ var (
 	//   45 = cyan  (Punkte-Reihen)
 	//   51 = helles Cyan (Tagline)
 	bannerWordmarkStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("99"))
-	bannerDotsStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("45"))
-	bannerTaglineStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("51"))
 
 	Banner = lipgloss.JoinVertical(
 		lipgloss.Center,

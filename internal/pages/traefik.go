@@ -49,15 +49,14 @@ func NewTraefik(cfg SetupConfig) *TraefikModel {
 func (m *TraefikModel) Init() tea.Cmd { return textinput.Blink }
 
 func (m *TraefikModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch m.step {
 
 		case traefikStepToggle:
 			switch {
-			case key.Matches(msg, keys.Up), key.Matches(msg, keys.Down):
+			case key.Matches(keyMsg, keys.Up), key.Matches(keyMsg, keys.Down):
 				m.enabled = !m.enabled
-			case key.Matches(msg, keys.Enter):
+			case key.Matches(keyMsg, keys.Enter):
 				if !m.enabled {
 					m.cfg.TraefikEnabled = false
 					cfg := m.cfg
@@ -68,13 +67,13 @@ func (m *TraefikModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.step = traefikStepDomain
 				m.domainInput.Focus()
 				return m, textinput.Blink
-			case key.Matches(msg, keys.Quit):
+			case key.Matches(keyMsg, keys.Quit):
 				return m, tea.Quit
 			}
 
 		case traefikStepDomain:
 			switch {
-			case key.Matches(msg, keys.Enter):
+			case key.Matches(keyMsg, keys.Enter):
 				if m.domainInput.Value() == "" {
 					return m, nil
 				}
@@ -82,7 +81,7 @@ func (m *TraefikModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.domainInput.Blur()
 				m.emailInput.Focus()
 				return m, textinput.Blink
-			case key.Matches(msg, keys.Quit):
+			case key.Matches(keyMsg, keys.Quit):
 				return m, tea.Quit
 			default:
 				var cmd tea.Cmd
@@ -92,7 +91,7 @@ func (m *TraefikModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case traefikStepEmail:
 			switch {
-			case key.Matches(msg, keys.Enter):
+			case key.Matches(keyMsg, keys.Enter):
 				if m.emailInput.Value() == "" {
 					return m, nil
 				}
@@ -100,23 +99,23 @@ func (m *TraefikModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.emailInput.Blur()
 				m.cursor = 1
 				return m, nil
-			case key.Matches(msg, keys.Quit):
+			case key.Matches(keyMsg, keys.Quit):
 				return m, tea.Quit
 			default:
 				var cmd tea.Cmd
-				m.emailInput, cmd = m.emailInput.Update(msg)
+				m.emailInput, cmd = m.emailInput.Update(keyMsg)
 				return m, cmd
 			}
 
 		case traefikStepStaging:
 			switch {
-			case key.Matches(msg, keys.Up), key.Matches(msg, keys.Down):
+			case key.Matches(keyMsg, keys.Up), key.Matches(keyMsg, keys.Down):
 				if m.cursor == 0 {
 					m.cursor = 1
 				} else {
 					m.cursor = 0
 				}
-			case key.Matches(msg, keys.Enter):
+			case key.Matches(keyMsg, keys.Enter):
 				m.cfg.TraefikEnabled = true
 				m.cfg.TraefikDomain = m.domainInput.Value()
 				m.cfg.TraefikEmail = m.emailInput.Value()
@@ -125,7 +124,7 @@ func (m *TraefikModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, func() tea.Msg {
 					return NavigateTo{Page: PageSMTP, Config: cfg}
 				}
-			case key.Matches(msg, keys.Quit):
+			case key.Matches(keyMsg, keys.Quit):
 				return m, tea.Quit
 			}
 		}

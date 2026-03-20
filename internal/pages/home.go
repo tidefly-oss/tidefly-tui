@@ -1,9 +1,11 @@
 package pages
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"runtime"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -63,7 +65,9 @@ func commandExists(cmd string) bool {
 }
 
 func commandRunning(cmd string, args ...string) bool {
-	return exec.Command(cmd, args...).Run() == nil
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, cmd, args...).Run() == nil
 }
 
 func (m *HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
