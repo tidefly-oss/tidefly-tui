@@ -18,8 +18,7 @@ func NewDashboard(cfg SetupConfig) *DashboardModel {
 }
 
 func (m *DashboardModel) Init() tea.Cmd {
-	// Dev: Dashboard-Frage macht keinen Sinn — direkt weiter zu Traefik
-	if m.cfg.Environment == "development" {
+	if m.cfg.Environment == EnvDevelopment {
 		m.cfg.WithDashboard = false
 		cfg := m.cfg
 		return func() tea.Msg {
@@ -30,24 +29,23 @@ func (m *DashboardModel) Init() tea.Cmd {
 }
 
 func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch {
-		case key.Matches(msg, keys.Up):
+		case key.Matches(keyMsg, keys.Up):
 			if m.cursor > 0 {
 				m.cursor--
 			}
-		case key.Matches(msg, keys.Down):
+		case key.Matches(keyMsg, keys.Down):
 			if m.cursor < 1 {
 				m.cursor++
 			}
-		case key.Matches(msg, keys.Enter):
+		case key.Matches(keyMsg, keys.Enter):
 			m.cfg.WithDashboard = m.cursor == 0
 			cfg := m.cfg
 			return m, func() tea.Msg {
 				return NavigateTo{Page: PageTraefik, Config: cfg}
 			}
-		case key.Matches(msg, keys.Quit):
+		case key.Matches(keyMsg, keys.Quit):
 			return m, tea.Quit
 		}
 	}

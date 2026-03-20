@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -80,7 +81,7 @@ func (m *RuntimeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		chosen := m.options[m.cursor]
 		socketPath := "/var/run/docker.sock"
 		if chosen.runtime == installer.Podman {
-			socketPath = "/run/user/1000/podman/podman.sock"
+			socketPath = PodmanSocket
 		}
 		return m, func() tea.Msg {
 			return NavigateTo{
@@ -115,7 +116,7 @@ func (m *RuntimeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if chosen.found {
 				socketPath := "/var/run/docker.sock"
 				if chosen.runtime == installer.Podman {
-					socketPath = "/run/user/1000/podman/podman.sock"
+					socketPath = PodmanSocket
 				}
 				return m, func() tea.Msg {
 					return NavigateTo{
@@ -156,9 +157,10 @@ func listenInstall(ch chan string) tea.Cmd {
 
 func runInstall(rt installer.Runtime, ch chan string) tea.Cmd {
 	return func() tea.Msg {
-		err := installer.Install(rt, ch)
+		ctx := context.Background()
+		err := installer.Install(ctx, rt, ch)
 		if err == nil {
-			err = installer.PostInstallSetup(rt, ch)
+			err = installer.PostInstallSetup(ctx, rt, ch)
 		}
 		close(ch)
 		return installDone{err: err}

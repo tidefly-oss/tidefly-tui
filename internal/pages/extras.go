@@ -23,25 +23,24 @@ type extraOption struct {
 func (m *ExtrasModel) Init() tea.Cmd { return nil }
 
 func (m *ExtrasModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch {
-		case key.Matches(msg, keys.Up):
+		case key.Matches(keyMsg, keys.Up):
 			if m.cursor > 0 {
 				m.cursor--
 			}
-		case key.Matches(msg, keys.Down):
+		case key.Matches(keyMsg, keys.Down):
 			if m.cursor < len(m.options)-1 {
 				m.cursor++
 			}
-		case msg.String() == " ":
+		case keyMsg.String() == " ":
 			m.options[m.cursor].enabled = !m.options[m.cursor].enabled
-		case key.Matches(msg, keys.Enter):
+		case key.Matches(keyMsg, keys.Enter):
 			cfg := m.cfg
 			return m, func() tea.Msg {
 				return NavigateTo{Page: PageStart, Config: cfg}
 			}
-		case key.Matches(msg, keys.Quit):
+		case key.Matches(keyMsg, keys.Quit):
 			return m, tea.Quit
 		}
 	}

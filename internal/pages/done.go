@@ -68,7 +68,7 @@ func (m *DoneModel) View() string {
 	)
 
 	links := ""
-	if cfg.Environment == "development" {
+	if cfg.Environment == EnvDevelopment {
 		links = lipgloss.JoinVertical(
 			lipgloss.Left,
 			styles.InputLabel.Render("Dev tools:"),
@@ -77,16 +77,14 @@ func (m *DoneModel) View() string {
 			styles.Help.Render("  Mailpit     → http://mailpit.localhost"),
 			styles.Help.Render("  Traefik     → http://traefik.localhost"),
 		)
-	} else {
-		if cfg.TraefikEnabled {
-			links = lipgloss.JoinVertical(
-				lipgloss.Left,
-				styles.InputLabel.Render("Services:"),
-				styles.Help.Render(fmt.Sprintf("  API         → https://api.%s", cfg.TraefikDomain)),
-			)
-			if cfg.WithDashboard {
-				links += "\n" + styles.Help.Render(fmt.Sprintf("  Dashboard   → https://tidefly.%s", cfg.TraefikDomain))
-			}
+	} else if cfg.TraefikEnabled {
+		links = lipgloss.JoinVertical(
+			lipgloss.Left,
+			styles.InputLabel.Render("Services:"),
+			styles.Help.Render(fmt.Sprintf("  API         → https://api.%s", cfg.TraefikDomain)),
+		)
+		if cfg.WithDashboard {
+			links += "\n" + styles.Help.Render(fmt.Sprintf("  Dashboard   → https://tidefly.%s", cfg.TraefikDomain))
 		}
 	}
 

@@ -2,6 +2,14 @@ package pages
 
 import tea "github.com/charmbracelet/bubbletea"
 
+// Constants for common strings used across pages
+const (
+	EnvDevelopment = "development"
+	EnvProduction  = "production"
+	OSLinux        = "linux"
+	PodmanSocket   = "/run/user/1000/podman/podman.sock"
+)
+
 // Model is the interface all page models must implement.
 type Model interface {
 	Init() tea.Cmd

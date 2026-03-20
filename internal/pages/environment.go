@@ -20,28 +20,27 @@ func NewEnvironment(cfg SetupConfig) *EnvironmentModel {
 func (m *EnvironmentModel) Init() tea.Cmd { return nil }
 
 func (m *EnvironmentModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch {
-		case key.Matches(msg, keys.Up):
+		case key.Matches(keyMsg, keys.Up):
 			if m.cursor > 0 {
 				m.cursor--
 			}
-		case key.Matches(msg, keys.Down):
+		case key.Matches(keyMsg, keys.Down):
 			if m.cursor < 1 {
 				m.cursor++
 			}
-		case key.Matches(msg, keys.Enter):
-			env := "production"
+		case key.Matches(keyMsg, keys.Enter):
+			env := EnvProduction
 			if m.cursor == 0 {
-				env = "development"
+				env = EnvDevelopment
 			}
 			m.cfg.Environment = env
 			cfg := m.cfg
 			return m, func() tea.Msg {
 				return NavigateTo{Page: PageDashboard, Config: cfg}
 			}
-		case key.Matches(msg, keys.Quit):
+		case key.Matches(keyMsg, keys.Quit):
 			return m, tea.Quit
 		}
 	}

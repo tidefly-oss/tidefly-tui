@@ -1,11 +1,17 @@
 package installer
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
+)
+
+const (
+	osLinux  = "linux"
+	osDarwin = "darwin"
 )
 
 type Runtime string
@@ -22,26 +28,26 @@ type InstallResult struct {
 	Err     error
 }
 
-func Install(rt Runtime, lines chan<- string) error {
+func Install(ctx context.Context, rt Runtime, lines chan<- string) error {
 	goos := runtime.GOOS
 
 	switch rt {
 	case Docker:
-		return installDocker(goos, lines)
+		return installDocker(ctx, goos, lines)
 	case Podman:
-		return installPodman(goos, lines)
+		return installPodman(ctx, goos, lines)
 	default:
 		return fmt.Errorf("unknown runtime: %s", rt)
 	}
 }
 
-func installDocker(goos string, lines chan<- string) error {
+func installDocker(ctx context.Context, goos string, lines chan<- string) error {
 	switch goos {
-	case "linux":
+	case osLinux:
 		send(lines, "Downloading Docker install script from get.docker.com...")
-		cmd := exec.Command("sh", "-c", "curl -fsSL https://get.docker.com | sh")
+		cmd := exec.CommandContext(ctx, "sh", "-c", "curl -fsSL https://get.docker.com | sh")
 		return runStreamed(cmd, lines)
-	case "darwin":
+	case osDarwin:
 		send(lines, "macOS detected — Docker Desktop must be installed manually.")
 		send(lines, "Download: https://www.docker.com/products/docker-desktop/")
 		return fmt.Errorf("manual install required on macOS")
@@ -50,9 +56,9 @@ func installDocker(goos string, lines chan<- string) error {
 	}
 }
 
-func installPodman(goos string, lines chan<- string) error {
+func installPodman(ctx context.Context, goos string, lines chan<- string) error {
 	switch goos {
-	case "linux":
+	case osLinux:
 		distro := detectDistro()
 		send(lines, fmt.Sprintf("Detected Linux distro: %s", distro))
 
@@ -60,41 +66,41 @@ func installPodman(goos string, lines chan<- string) error {
 		switch distro {
 		case "debian", "ubuntu":
 			send(lines, "Installing Podman via apt...")
-			cmd = exec.Command(
+			cmd = exec.CommandContext(ctx,
 				"sh", "-c",
 				"apt-get update -qq && apt-get install -y podman",
 			)
 		case "fedora":
 			send(lines, "Installing Podman via dnf...")
-			cmd = exec.Command("sh", "-c", "dnf install -y podman")
+			cmd = exec.CommandContext(ctx, "sh", "-c", "dnf install -y podman")
 		case "rhel", "centos", "rocky", "almalinux":
 			send(lines, "Installing Podman via dnf...")
-			cmd = exec.Command("sh", "-c", "dnf install -y podman")
+			cmd = exec.CommandContext(ctx, "sh", "-c", "dnf install -y podman")
 		case "arch":
 			send(lines, "Installing Podman via pacman...")
-			cmd = exec.Command("sh", "-c", "pacman -Sy --noconfirm podman")
+			cmd = exec.CommandContext(ctx, "sh", "-c", "pacman -Sy --noconfirm podman")
 		case "opensuse":
 			send(lines, "Installing Podman via zypper...")
-			cmd = exec.Command("sh", "-c", "zypper install -y podman")
+			cmd = exec.CommandContext(ctx, "sh", "-c", "zypper install -y podman")
 		default:
 			// Fallback: official podman install script
 			send(lines, "Using official Podman install script...")
-			cmd = exec.Command(
+			cmd = exec.CommandContext(ctx,
 				"sh", "-c",
 				"curl -fsSL https://podman.io/install.sh | sh",
 			)
 		}
 		return runStreamed(cmd, lines)
-	case "darwin":
+	case osDarwin:
 		send(lines, "Installing Podman via Homebrew...")
-		cmd := exec.Command("sh", "-c", "brew install podman && podman machine init && podman machine start")
+		cmd := exec.CommandContext(ctx, "sh", "-c", "brew install podman && podman machine init && podman machine start")
 		return runStreamed(cmd, lines)
 	default:
 		return fmt.Errorf("unsupported OS: %s", goos)
 	}
 }
 
-func PostInstallSetup(rt Runtime, lines chan<- string) error {
+func PostInstallSetup(ctx context.Context, rt Runtime, lines chan<- string) error {
 	if rt != Podman {
 		return nil
 	}
@@ -104,7 +110,7 @@ func PostInstallSetup(rt Runtime, lines chan<- string) error {
 		"loginctl enable-linger $USER",
 	}
 	for _, c := range cmds {
-		if err := runStreamed(exec.Command("sh", "-c", c), lines); err != nil {
+		if err := runStreamed(exec.CommandContext(ctx, "sh", "-c", c), lines); err != nil {
 			send(lines, fmt.Sprintf("Warning: %v (non-fatal)", err))
 		}
 	}

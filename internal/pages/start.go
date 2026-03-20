@@ -49,7 +49,7 @@ func NewStart(cfg SetupConfig) *StartModel {
 
 func buildSteps(cfg SetupConfig) []startStep {
 	coreLabel := "Starting infrastructure"
-	if cfg.Environment == "production" {
+	if cfg.Environment == EnvProduction {
 		coreLabel = "Starting services (Traefik, Postgres, Redis, Backend"
 		if cfg.WithDashboard {
 			coreLabel += ", Frontend"
@@ -101,7 +101,7 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 
 	podmanSock := cfg.SocketPath
 	if podmanSock == "" {
-		podmanSock = "/run/user/1000/podman/podman.sock"
+		podmanSock = PodmanSocket
 	}
 
 	withEnv := func(cmd *exec.Cmd) *exec.Cmd {
@@ -345,7 +345,11 @@ func writeEnvVars(path string, vars map[string]string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
 
 	var lines []string
 	updated := make(map[string]bool)
@@ -380,7 +384,9 @@ func writeEnvVars(path string, vars map[string]string) error {
 	}
 	w := bufio.NewWriter(f)
 	for _, l := range lines {
-		fmt.Fprintln(w, l)
+		if _, err := fmt.Fprintln(w, l); err != nil {
+			return err
+		}
 	}
 	return w.Flush()
 }
