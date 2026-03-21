@@ -22,9 +22,6 @@ type AppModel struct {
 	spinner spinner.Model
 }
 
-// pages.Model ist ein Interface das alle Page-Models implementieren müssen
-// (Init, Update, View — das standard tea.Model Interface)
-
 func NewApp() AppModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
@@ -53,9 +50,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	// Accumulate config from NavigateTo messages
 	if nav, ok := msg.(pages.NavigateTo); ok {
-		// Merge incoming config into accumulated config
 		mergeConfig(&m.cfg, nav.Config)
 
 		switch nav.Page {
@@ -76,8 +71,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.current = pages.NewEnvironment(m.cfg)
 		case pages.PageDashboard:
 			m.current = pages.NewDashboard(m.cfg)
-		case pages.PageTraefik:
-			m.current = pages.NewTraefik(m.cfg)
+		case pages.PageCaddy:
+			m.current = pages.NewCaddy(m.cfg)
 		case pages.PageSMTP:
 			m.current = pages.NewSMTP(m.cfg)
 		case pages.PageStart:
@@ -103,7 +98,6 @@ func (m AppModel) View() string {
 	return m.current.View()
 }
 
-// mergeConfig copies non-zero fields from src into dst
 func mergeConfig(dst *pages.SetupConfig, src pages.SetupConfig) {
 	if src.Runtime != "" {
 		dst.Runtime = src.Runtime
@@ -115,14 +109,14 @@ func mergeConfig(dst *pages.SetupConfig, src pages.SetupConfig) {
 		dst.Environment = src.Environment
 	}
 	dst.WithDashboard = src.WithDashboard
-	dst.TraefikEnabled = src.TraefikEnabled
-	if src.TraefikDomain != "" {
-		dst.TraefikDomain = src.TraefikDomain
+	dst.CaddyEnabled = src.CaddyEnabled
+	if src.CaddyDomain != "" {
+		dst.CaddyDomain = src.CaddyDomain
 	}
-	if src.TraefikEmail != "" {
-		dst.TraefikEmail = src.TraefikEmail
+	if src.CaddyEmail != "" {
+		dst.CaddyEmail = src.CaddyEmail
 	}
-	dst.TraefikStaging = src.TraefikStaging
+	dst.CaddyStaging = src.CaddyStaging
 	dst.SMTPEnabled = src.SMTPEnabled
 	if src.SMTPHost != "" {
 		dst.SMTPHost = src.SMTPHost

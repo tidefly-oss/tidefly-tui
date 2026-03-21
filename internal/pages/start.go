@@ -16,7 +16,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/codifystudios/tidefly/tui/internal/env"
-
 	"github.com/codifystudios/tidefly/tui/internal/styles"
 )
 
@@ -51,13 +50,13 @@ func NewStart(cfg SetupConfig) *StartModel {
 func buildSteps(cfg SetupConfig) []startStep {
 	var coreLabel string
 	if cfg.Environment == EnvProduction {
-		coreLabel = "Starting services (Traefik, Postgres, Redis, Backend"
+		coreLabel = "Starting services (Caddy, Postgres, Redis, Backend"
 		if cfg.WithDashboard {
 			coreLabel += ", Frontend"
 		}
 		coreLabel += ")"
 	} else {
-		coreLabel = "Starting services (Traefik, Postgres, Redis, Mailpit)"
+		coreLabel = "Starting services (Caddy, Postgres, Redis, Mailpit)"
 	}
 
 	return []startStep{
@@ -87,7 +86,6 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 		runtime = "docker"
 	}
 
-	// Backend paths
 	backendRoot := filepath.Join(env.Root(), "tidefly-backend")
 	deployPath := filepath.Join(backendRoot, "deploy")
 
@@ -129,8 +127,14 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 		switch {
 		case strings.HasPrefix(label, "Generating secrets"):
 			scriptPath := filepath.Join(backendRoot, "scripts", "init-env.sh")
+
+			// Skip if .env already exists
+			if _, statErr := os.Stat(envFile); statErr == nil {
+				break
+			}
+
 			if _, statErr := os.Stat(scriptPath); statErr != nil {
-				err = fmt.Errorf("script not found: %s (root: %s)", scriptPath, env.Root())
+				err = fmt.Errorf("script not found: %s", scriptPath)
 				break
 			}
 			err = runScript(scriptPath)
@@ -140,13 +144,12 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 				"RUNTIME_TYPE":   runtime,
 				"RUNTIME_SOCKET": cfg.SocketPath,
 			}
-			if cfg.TraefikEnabled {
-				vars["TRAEFIK_ENABLED"] = "true"
-				vars["TRAEFIK_BASE_DOMAIN"] = cfg.TraefikDomain
-				vars["TRAEFIK_ACME_EMAIL"] = cfg.TraefikEmail
-				if cfg.TraefikStaging {
-					vars["TRAEFIK_ACME_STAGING"] = "true"
-					vars["TRAEFIK_ACME_CA_SERVER"] = "https://acme-staging-v02.api.letsencrypt.org/directory"
+			if cfg.CaddyEnabled {
+				vars["CADDY_ENABLED"] = "true"
+				vars["CADDY_BASE_DOMAIN"] = cfg.CaddyDomain
+				vars["CADDY_ACME_EMAIL"] = cfg.CaddyEmail
+				if cfg.CaddyStaging {
+					vars["CADDY_ACME_STAGING"] = "true"
 				}
 			}
 			if cfg.SMTPEnabled {
@@ -173,13 +176,13 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 			args := []string{"compose", "-f", cf, "--env-file", envFile, "up", "-d"}
 
 			if isProd {
-				services = []string{"traefik", "postgres", "redis", "backend"}
+				services = []string{"caddy", "postgres", "redis", "backend"}
 				if cfg.WithDashboard {
 					args = append([]string{"--profile", "dashboard"}, args...)
 					services = append(services, "frontend")
 				}
 			} else {
-				services = []string{"traefik", "postgres", "redis", "mailpit"}
+				services = []string{"caddy", "postgres", "redis", "mailpit"}
 			}
 
 			cmd := withEnv(exec.CommandContext(context.Background(), runtime, append(args, services...)...))
@@ -194,8 +197,7 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 			for time.Now().Before(deadline) {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				out, e := exec.CommandContext(
-					ctx,
-					runtime, "inspect",
+					ctx, runtime, "inspect",
 					"--format", "{{.State.Health.Status}}",
 					"tidefly_postgres",
 				).Output()
@@ -212,25 +214,21 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 
 		case strings.HasPrefix(label, "Waiting for Redis"):
 			ready := false
-
 			deadline := time.Now().Add(30 * time.Second)
 			for time.Now().Before(deadline) {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				out, err := exec.CommandContext(
-					ctx,
-					runtime, "inspect",
+				out, e := exec.CommandContext(
+					ctx, runtime, "inspect",
 					"--format", "{{.State.Health.Status}}",
 					"tidefly_redis",
 				).Output()
 				cancel()
-
-				if err == nil && strings.TrimSpace(string(out)) == "healthy" {
+				if e == nil && strings.TrimSpace(string(out)) == "healthy" {
 					ready = true
 					break
 				}
 				time.Sleep(2 * time.Second)
 			}
-
 			if !ready {
 				err = fmt.Errorf("redis not healthy after 30s")
 			}

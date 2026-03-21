@@ -5,21 +5,20 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-
 	"github.com/codifystudios/tidefly/tui/internal/styles"
 )
 
-type traefikStep int
+type caddyStep int
 
 const (
-	traefikStepToggle traefikStep = iota
-	traefikStepDomain
-	traefikStepEmail
-	traefikStepStaging
+	caddyStepToggle caddyStep = iota
+	caddyStepDomain
+	caddyStepEmail
+	caddyStepStaging
 )
 
-type TraefikModel struct {
-	step    traefikStep
+type CaddyModel struct {
+	step    caddyStep
 	enabled bool
 	cursor  int
 
@@ -29,7 +28,7 @@ type TraefikModel struct {
 	cfg SetupConfig
 }
 
-func NewTraefik(cfg SetupConfig) *TraefikModel {
+func NewCaddy(cfg SetupConfig) *CaddyModel {
 	domain := textinput.New()
 	domain.Placeholder = "apps.example.com"
 	domain.CharLimit = 253
@@ -38,46 +37,46 @@ func NewTraefik(cfg SetupConfig) *TraefikModel {
 	email.Placeholder = "admin@example.com"
 	email.CharLimit = 255
 
-	return &TraefikModel{
-		step:        traefikStepToggle,
+	return &CaddyModel{
+		step:        caddyStepToggle,
 		domainInput: domain,
 		emailInput:  email,
 		cfg:         cfg,
 	}
 }
 
-func (m *TraefikModel) Init() tea.Cmd { return textinput.Blink }
+func (m *CaddyModel) Init() tea.Cmd { return textinput.Blink }
 
-func (m *TraefikModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *CaddyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch m.step {
 
-		case traefikStepToggle:
+		case caddyStepToggle:
 			switch {
 			case key.Matches(keyMsg, keys.Up), key.Matches(keyMsg, keys.Down):
 				m.enabled = !m.enabled
 			case key.Matches(keyMsg, keys.Enter):
 				if !m.enabled {
-					m.cfg.TraefikEnabled = false
+					m.cfg.CaddyEnabled = false
 					cfg := m.cfg
 					return m, func() tea.Msg {
 						return NavigateTo{Page: PageSMTP, Config: cfg}
 					}
 				}
-				m.step = traefikStepDomain
+				m.step = caddyStepDomain
 				m.domainInput.Focus()
 				return m, textinput.Blink
 			case key.Matches(keyMsg, keys.Quit):
 				return m, tea.Quit
 			}
 
-		case traefikStepDomain:
+		case caddyStepDomain:
 			switch {
 			case key.Matches(keyMsg, keys.Enter):
 				if m.domainInput.Value() == "" {
 					return m, nil
 				}
-				m.step = traefikStepEmail
+				m.step = caddyStepEmail
 				m.domainInput.Blur()
 				m.emailInput.Focus()
 				return m, textinput.Blink
@@ -89,13 +88,13 @@ func (m *TraefikModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 
-		case traefikStepEmail:
+		case caddyStepEmail:
 			switch {
 			case key.Matches(keyMsg, keys.Enter):
 				if m.emailInput.Value() == "" {
 					return m, nil
 				}
-				m.step = traefikStepStaging
+				m.step = caddyStepStaging
 				m.emailInput.Blur()
 				m.cursor = 1
 				return m, nil
@@ -107,7 +106,7 @@ func (m *TraefikModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 
-		case traefikStepStaging:
+		case caddyStepStaging:
 			switch {
 			case key.Matches(keyMsg, keys.Up), key.Matches(keyMsg, keys.Down):
 				if m.cursor == 0 {
@@ -116,10 +115,10 @@ func (m *TraefikModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cursor = 0
 				}
 			case key.Matches(keyMsg, keys.Enter):
-				m.cfg.TraefikEnabled = true
-				m.cfg.TraefikDomain = m.domainInput.Value()
-				m.cfg.TraefikEmail = m.emailInput.Value()
-				m.cfg.TraefikStaging = m.cursor == 0
+				m.cfg.CaddyEnabled = true
+				m.cfg.CaddyDomain = m.domainInput.Value()
+				m.cfg.CaddyEmail = m.emailInput.Value()
+				m.cfg.CaddyStaging = m.cursor == 0
 				cfg := m.cfg
 				return m, func() tea.Msg {
 					return NavigateTo{Page: PageSMTP, Config: cfg}
@@ -132,13 +131,13 @@ func (m *TraefikModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *TraefikModel) View() string {
+func (m *CaddyModel) View() string {
 	switch m.step {
 
-	case traefikStepToggle:
+	case caddyStepToggle:
 		header := lipgloss.JoinVertical(
 			lipgloss.Left,
-			styles.Title.Render("Traefik / SSL"),
+			styles.Title.Render("Caddy / SSL"),
 			styles.Subtitle.Render("Automatically expose services with HTTPS via Let's Encrypt?"),
 			"",
 			lipgloss.NewStyle().Foreground(styles.Muted).Render(
@@ -147,11 +146,11 @@ func (m *TraefikModel) View() string {
 			),
 			"",
 		)
-		yes := "   Enable Traefik + SSL"
+		yes := "   Enable Caddy + SSL"
 		no := "   Skip — no automatic HTTPS"
 		if m.enabled {
 			yes = styles.MenuItemSelected.Render("") +
-				lipgloss.NewStyle().Foreground(styles.Primary).Bold(true).Render("Enable Traefik + SSL")
+				lipgloss.NewStyle().Foreground(styles.Primary).Bold(true).Render("Enable Caddy + SSL")
 		} else {
 			no = styles.MenuItemSelected.Render("") +
 				lipgloss.NewStyle().Foreground(styles.Primary).Bold(true).Render("Skip — no automatic HTTPS")
@@ -164,7 +163,7 @@ func (m *TraefikModel) View() string {
 			),
 		)
 
-	case traefikStepDomain:
+	case caddyStepDomain:
 		header := lipgloss.JoinVertical(
 			lipgloss.Left,
 			styles.Title.Render("Base Domain"),
@@ -188,7 +187,7 @@ func (m *TraefikModel) View() string {
 			),
 		)
 
-	case traefikStepEmail:
+	case caddyStepEmail:
 		header := lipgloss.JoinVertical(
 			lipgloss.Left,
 			styles.Title.Render("ACME Email"),
@@ -206,19 +205,17 @@ func (m *TraefikModel) View() string {
 			),
 		)
 
-	case traefikStepStaging:
+	case caddyStepStaging:
 		header := lipgloss.JoinVertical(
 			lipgloss.Left,
 			styles.Title.Render("Let's Encrypt CA"),
-			styles.Subtitle.Render("Which Certificate Authority should Traefik use?"),
+			styles.Subtitle.Render("Which Certificate Authority should Caddy use?"),
 			"",
 		)
-
 		opts := []struct{ label, desc string }{
 			{"Staging CA", "For testing — no rate limits, but browser shows untrusted cert"},
 			{"Production CA", "Real certificates — recommended for live deployments"},
 		}
-
 		list := ""
 		for i, o := range opts {
 			isSelected := i == m.cursor
@@ -233,7 +230,6 @@ func (m *TraefikModel) View() string {
 			desc := lipgloss.NewStyle().Foreground(styles.Muted).PaddingLeft(3).Render(o.desc)
 			list += cur + label + "\n" + desc + "\n\n"
 		}
-
 		help := styles.Help.Render("↑/↓ navigate  •  enter confirm  •  q quit")
 		return styles.Frame(
 			termWidth, termHeight, lipgloss.JoinVertical(

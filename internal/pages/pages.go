@@ -2,7 +2,6 @@ package pages
 
 import tea "github.com/charmbracelet/bubbletea"
 
-// Constants for common strings used across pages
 const (
 	EnvDevelopment = "development"
 	EnvProduction  = "production"
@@ -10,7 +9,6 @@ const (
 	PodmanSocket   = "/run/user/1000/podman/podman.sock"
 )
 
-// Model is the interface all page models must implement.
 type Model interface {
 	Init() tea.Cmd
 	Update(tea.Msg) (tea.Model, tea.Cmd)
@@ -24,7 +22,7 @@ const (
 	PageRuntime
 	PageEnvironment
 	PageDashboard
-	PageTraefik
+	PageCaddy
 	PageSMTP
 	PageExtras
 	PageStart
@@ -39,17 +37,15 @@ type NavigateTo struct {
 }
 
 type SetupConfig struct {
-	Runtime    string
-	SocketPath string
-
-	Environment string // "development" | "production"
-
+	Runtime       string
+	SocketPath    string
+	Environment   string
 	WithDashboard bool
 
-	TraefikEnabled bool
-	TraefikDomain  string
-	TraefikEmail   string
-	TraefikStaging bool
+	CaddyEnabled bool
+	CaddyDomain  string
+	CaddyEmail   string
+	CaddyStaging bool
 
 	SMTPEnabled  bool
 	SMTPHost     string

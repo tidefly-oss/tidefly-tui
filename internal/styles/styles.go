@@ -61,8 +61,8 @@ var (
 
 // Frame rendert den äußeren Container mit Banner oben + Page-Inhalt darunter.
 func Frame(width, height int, content string) string {
-	innerWidth := width - 2 - 6 // border:2 + padding-left:3 + padding-right:3
-	innerHeight := height - 4   // border:2 + padding-top:1 + padding-bottom:1
+	innerWidth := width - 2 - 6
+	innerHeight := height - 4
 	if innerWidth < 0 {
 		innerWidth = 0
 	}

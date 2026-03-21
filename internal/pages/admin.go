@@ -2,6 +2,8 @@ package pages
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"strings"
 
@@ -10,13 +12,31 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/crypto/argon2"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
 	"github.com/codifystudios/tidefly/tui/internal/env"
 	"github.com/codifystudios/tidefly/tui/internal/styles"
 )
+
+// hashPassword hashes a password using Argon2id (OWASP 2024 params).
+// Kept inline — TUI is a separate Go module from the backend.
+func hashPassword(password string) (string, error) {
+	salt := make([]byte, 16)
+	if _, err := rand.Read(salt); err != nil {
+		return "", fmt.Errorf("generating salt: %w", err)
+	}
+	hash := argon2.IDKey([]byte(password), salt, 3, 64*1024, 2, 32)
+	return fmt.Sprintf(
+		"$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
+		argon2.Version, 64*1024, 3, 2,
+		base64.RawStdEncoding.EncodeToString(salt),
+		base64.RawStdEncoding.EncodeToString(hash),
+	), nil
+}
+
+// ── Admin page ────────────────────────────────────────────────────────────────
 
 type adminField int
 
@@ -139,7 +159,7 @@ func submitAdmin(inputs [fieldCount]textinput.Model) tea.Cmd {
 			return AdminError{fmt.Sprintf("database connection failed: %v", err)}
 		}
 
-		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		hash, err := hashPassword(password)
 		if err != nil {
 			return AdminError{fmt.Sprintf("password hashing failed: %v", err)}
 		}
@@ -164,7 +184,7 @@ func submitAdmin(inputs [fieldCount]textinput.Model) tea.Cmd {
 			&User{
 				ID:       uuid.New().String(),
 				Email:    email,
-				Password: string(hash),
+				Password: hash,
 				Name:     firstName + " " + lastName,
 				Role:     "admin",
 				Active:   true,
