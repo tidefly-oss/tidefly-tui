@@ -1,0 +1,20 @@
+# Binaries
+dist/
+bin/
+*.exe
+*.exe~
+
+# Go
+*.test
+*.out
+coverage.out
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
