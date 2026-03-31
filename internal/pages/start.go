@@ -91,22 +91,6 @@ func (m *StartModel) composePaths() (cf, envFile string) {
 	return
 }
 
-func (m *StartModel) withEnv(cmd *exec.Cmd) *exec.Cmd {
-	cmd.Env = append(os.Environ(), "ENV_TYPE="+m.cfg.Environment)
-	if m.cfg.Runtime == "podman" {
-		sock := m.cfg.SocketPath
-		if sock == "" {
-			sock = PodmanSocket
-		}
-		cmd.Env = append(
-			cmd.Env,
-			"DOCKER_HOST=unix://"+sock,
-			"DOCKER_SOCK="+sock,
-		)
-	}
-	return cmd
-}
-
 func (m *StartModel) rollback() tea.Cmd {
 	cf, envFile := m.composePaths()
 	rt := m.cfg.Runtime
