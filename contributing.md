@@ -6,10 +6,10 @@ Thanks for your interest in contributing!
 
 ### Prerequisites
 
-- Go 1.23+
+- Go 1.26+
+- A running Docker or Podman instance for testing
 
 ### Setup
-
 ```bash
 git clone https://github.com/tidefly-oss/tidefly-tui
 cd tidefly-tui
@@ -17,7 +17,6 @@ go run ./cmd/tidefly-installer
 ```
 
 ## Development Workflow
-
 ```bash
 go run ./cmd/tidefly-installer   # run wizard
 go test ./...                    # run tests
@@ -26,12 +25,15 @@ golangci-lint run ./...          # lint
 ```
 
 ## Project Structure
-
 ```
 cmd/tidefly-installer/    entry point
 internal/
-  installer/            wizard pages and setup logic
-  version/              build version info
+  env/                  .env loading and path resolution
+  installer/            Docker/Podman auto-install logic
+  pages/                wizard pages (Home, Runtime, Environment, ...)
+  styles/               Lip Gloss color and layout definitions
+scripts/
+  install.sh            curl-based installer for end users
 ```
 
 ## Pull Requests
@@ -44,3 +46,11 @@ internal/
 
 Please do **not** open a public issue for security vulnerabilities.
 Use [GitHub Private Security Advisories](https://github.com/tidefly-oss/tidefly-tui/security/advisories/new) instead.
+
+---
+
+<div align="center">
+
+Built with ❤️ · [AGPLv3](https://github.com/tidefly-oss/tidefly-tui/blob/main/LICENSE) · [Report a vulnerability](https://github.com/tidefly-oss/tidefly-tui/security/advisories/new)
+
+</div>
