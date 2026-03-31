@@ -16,12 +16,10 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
-	"github.com/codifystudios/tidefly/tui/internal/env"
-	"github.com/codifystudios/tidefly/tui/internal/styles"
+	"github.com/tidefly-oss/tidefly-tui/internal/env"
+	"github.com/tidefly-oss/tidefly-tui/internal/styles"
 )
 
-// hashPassword hashes a password using Argon2id (OWASP 2024 params).
-// Kept inline — TUI is a separate Go module from the backend.
 func hashPassword(password string) (string, error) {
 	salt := make([]byte, 16)
 	if _, err := rand.Read(salt); err != nil {
@@ -35,8 +33,6 @@ func hashPassword(password string) (string, error) {
 		base64.RawStdEncoding.EncodeToString(hash),
 	), nil
 }
-
-// ── Admin page ────────────────────────────────────────────────────────────────
 
 type adminField int
 
@@ -77,33 +73,26 @@ func NewAdmin() *AdminModel {
 	return m
 }
 
-func (m *AdminModel) Init() tea.Cmd {
-	return textinput.Blink
-}
+func (m *AdminModel) Init() tea.Cmd { return textinput.Blink }
 
 func (m *AdminModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-
 	case AdminCreated:
 		m.loading = false
-		return m, func() tea.Msg { return NavigateTo{Page: PageDone} }
-
+		return m, navigate(PageDone, SetupConfig{})
 	case AdminError:
 		m.loading = false
 		m.err = msg.Msg
 		return m, nil
-
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, keys.Quit):
 			return m, tea.Quit
-
 		case key.Matches(msg, keys.Tab), key.Matches(msg, keys.Down):
 			m.inputs[m.focused].Blur()
 			m.focused = (m.focused + 1) % fieldCount
 			m.inputs[m.focused].Focus()
 			return m, textinput.Blink
-
 		case key.Matches(msg, keys.Up):
 			m.inputs[m.focused].Blur()
 			if m.focused == 0 {
@@ -113,7 +102,6 @@ func (m *AdminModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.inputs[m.focused].Focus()
 			return m, textinput.Blink
-
 		case key.Matches(msg, keys.Enter):
 			if m.focused < fieldCount-1 {
 				m.inputs[m.focused].Blur()
@@ -126,7 +114,6 @@ func (m *AdminModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, submitAdmin(m.inputs)
 		}
 	}
-
 	var cmd tea.Cmd
 	m.inputs[m.focused], cmd = m.inputs[m.focused].Update(msg)
 	return m, cmd
@@ -148,22 +135,18 @@ func submitAdmin(inputs [fieldCount]textinput.Model) tea.Cmd {
 		if !strings.Contains(email, "@") {
 			return AdminError{"invalid email address"}
 		}
-
 		dbURL := env.GetOrLoad("DATABASE_URL")
 		if dbURL == "" {
-			return AdminError{"DATABASE_URL not set — is infrastructure running?"}
+			return AdminError{"DATABASE_URL not set — is the backend running?"}
 		}
-
 		db, err := gorm.Open(postgres.Open(dbURL), &gorm.Config{})
 		if err != nil {
 			return AdminError{fmt.Sprintf("database connection failed: %v", err)}
 		}
-
 		hash, err := hashPassword(password)
 		if err != nil {
 			return AdminError{fmt.Sprintf("password hashing failed: %v", err)}
 		}
-
 		type User struct {
 			ID       string
 			Email    string
@@ -172,14 +155,12 @@ func submitAdmin(inputs [fieldCount]textinput.Model) tea.Cmd {
 			Role     string
 			Active   bool
 		}
-
 		var count int64
 		db.WithContext(context.Background()).
 			Table("users").Where("email = ?", email).Count(&count)
 		if count > 0 {
 			return AdminError{"a user with this email already exists"}
 		}
-
 		if err := db.WithContext(context.Background()).Table("users").Create(
 			&User{
 				ID:       uuid.New().String(),
@@ -192,7 +173,6 @@ func submitAdmin(inputs [fieldCount]textinput.Model) tea.Cmd {
 		).Error; err != nil {
 			return AdminError{fmt.Sprintf("failed to create user: %v", err)}
 		}
-
 		return AdminCreated{}
 	}
 }
@@ -204,7 +184,6 @@ func (m *AdminModel) View() string {
 		styles.Subtitle.Render("Create your first administrator account"),
 		"",
 	)
-
 	form := ""
 	for i, input := range m.inputs {
 		lbl := styles.InputLabel
@@ -214,23 +193,19 @@ func (m *AdminModel) View() string {
 		form += lbl.Render(adminLabels[i]) + "\n"
 		form += input.View() + "\n\n"
 	}
-
 	errMsg := ""
 	if m.err != "" {
 		errMsg = styles.StatusErr.Render("✗ "+m.err) + "\n\n"
 	}
-
 	loading := ""
 	if m.loading {
 		loading = styles.StatusWarn.Render("⟳ creating account...") + "\n\n"
 	}
-
-	help := styles.Help.Render("tab/↑↓ between fields  •  enter confirm  •  q quit")
-
 	return styles.Frame(
 		termWidth, termHeight, lipgloss.JoinVertical(
 			lipgloss.Left,
-			header, form, errMsg, loading, help,
+			header, form, errMsg, loading,
+			styles.Help.Render("tab/↑↓ between fields  •  enter confirm  •  q quit"),
 		),
 	)
 }

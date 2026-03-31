@@ -12,14 +12,14 @@ Thanks for your interest in contributing!
 
 ```bash
 git clone https://github.com/tidefly-oss/tidefly-tui
-cd tidefly-tui
-go run ./cmd/tidefly-installer
+cd tidefly-plane-tui
+go run ./cmd/tidefly-plane-installer
 ```
 
 ## Development Workflow
 
 ```bash
-go run ./cmd/tidefly-installer   # run wizard
+go run ./cmd/tidefly-plane-installer   # run wizard
 go test ./...                    # run tests
 go build ./...                   # build
 golangci-lint run ./...          # lint

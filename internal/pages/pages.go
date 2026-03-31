@@ -24,7 +24,6 @@ const (
 	PageDashboard
 	PageCaddy
 	PageSMTP
-	PageExtras
 	PageStart
 	PageAdmin
 	PageDone
@@ -43,6 +42,7 @@ type SetupConfig struct {
 	WithDashboard bool
 
 	CaddyEnabled bool
+	CaddyLater   bool
 	CaddyDomain  string
 	CaddyEmail   string
 	CaddyStaging bool

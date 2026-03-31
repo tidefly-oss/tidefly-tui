@@ -24,16 +24,16 @@ This repository contains the terminal UI installer that guides you through setti
 Download the latest binary from [Releases](https://github.com/tidefly-oss/tidefly-tui/releases):
 
 ```bash
-chmod +x tidefly-tui-linux-amd64
-./tidefly-tui-linux-amd64
+chmod +x tidefly-plane-tui-linux-amd64
+./tidefly-plane-tui-linux-amd64
 ```
 
 Or run from source:
 
 ```bash
 git clone https://github.com/tidefly-oss/tidefly-tui
-cd tidefly-tui
-go run ./cmd/tidefly-installer
+cd tidefly-plane-tui
+go run ./cmd/tidefly-plane-installer
 ```
 
 ## Wizard Flow

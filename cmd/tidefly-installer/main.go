@@ -8,9 +8,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/codifystudios/tidefly/tui/internal/env"
-	"github.com/codifystudios/tidefly/tui/internal/pages"
-	"github.com/codifystudios/tidefly/tui/internal/styles"
+	"github.com/tidefly-oss/tidefly-tui/internal/env"
+	"github.com/tidefly-oss/tidefly-tui/internal/pages"
+	"github.com/tidefly-oss/tidefly-tui/internal/styles"
 )
 
 type AppModel struct {
@@ -81,7 +81,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.current = pages.NewAdmin()
 		case pages.PageDone:
 			m.current = pages.NewDone(m.cfg)
-		case pages.PageExtras:
 		}
 		return m, m.current.Init()
 	}
@@ -110,6 +109,7 @@ func mergeConfig(dst *pages.SetupConfig, src pages.SetupConfig) {
 	}
 	dst.WithDashboard = src.WithDashboard
 	dst.CaddyEnabled = src.CaddyEnabled
+	dst.CaddyLater = src.CaddyLater
 	if src.CaddyDomain != "" {
 		dst.CaddyDomain = src.CaddyDomain
 	}
