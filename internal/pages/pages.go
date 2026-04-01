@@ -7,6 +7,7 @@ const (
 	EnvProduction  = "production"
 	OSLinux        = "linux"
 	PodmanSocket   = "/run/user/1000/podman/podman.sock"
+	runtimePodman  = "podman"
 )
 
 type Model interface {
