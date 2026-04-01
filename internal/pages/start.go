@@ -15,14 +15,17 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/codifystudios/tidefly/tui/internal/env"
-	"github.com/codifystudios/tidefly/tui/internal/styles"
+
+	"github.com/tidefly-oss/tidefly-tui/internal/env"
+	"github.com/tidefly-oss/tidefly-tui/internal/styles"
 )
 
 type startStepResult struct {
 	step int
 	err  error
 }
+
+type rollbackDone struct{ err error }
 
 type startStep struct {
 	label  string
@@ -32,12 +35,13 @@ type startStep struct {
 }
 
 type StartModel struct {
-	cfg      SetupConfig
-	spinner  spinner.Model
-	steps    []startStep
-	current  int
-	finished bool
-	hasError bool
+	cfg         SetupConfig
+	spinner     spinner.Model
+	steps       []startStep
+	current     int
+	finished    bool
+	hasError    bool
+	rollingBack bool
 }
 
 func NewStart(cfg SetupConfig) *StartModel {
@@ -48,48 +52,35 @@ func NewStart(cfg SetupConfig) *StartModel {
 }
 
 func buildSteps(cfg SetupConfig) []startStep {
-	var coreLabel string
-	if cfg.Environment == EnvProduction {
-		coreLabel = "Starting services (Caddy, Postgres, Redis, Backend"
-		if cfg.WithDashboard {
-			coreLabel += ", Frontend"
-		}
-		coreLabel += ")"
-	} else {
-		coreLabel = "Starting services (Caddy, Postgres, Redis, Mailpit)"
+	backendLabel := "Starting backend"
+	if cfg.WithDashboard {
+		backendLabel = "Starting backend + dashboard"
 	}
-
 	return []startStep{
 		{label: "Generating secrets"},
 		{label: "Writing environment config"},
-		{label: coreLabel},
-		{label: "Waiting for Postgres"},
-		{label: "Waiting for Redis"},
-		{label: "Running database migrations"},
+		{label: "Creating Docker networks"},
+		{label: "Cleaning up existing containers"},
+		{label: "Starting core services (Postgres, Redis, Caddy)"},
+		{label: "Waiting for Postgres to be healthy"},
+		{label: "Waiting for Redis to be healthy"},
+		{label: backendLabel},
 	}
 }
 
 func (m *StartModel) Init() tea.Cmd {
 	return tea.Batch(
-		m.spinner.Tick, func() tea.Msg {
+		m.spinner.Tick,
+		func() tea.Msg {
 			time.Sleep(50 * time.Millisecond)
 			return startStepResult{step: -1}
 		},
 	)
 }
 
-func (m *StartModel) runStep(step int) tea.Cmd {
-	cfg := m.cfg
-	isProd := cfg.Environment == "production"
-	runtime := cfg.Runtime
-	if runtime == "" {
-		runtime = "docker"
-	}
-
-	backendRoot := filepath.Join(env.Root(), "tidefly-backend")
-	deployPath := filepath.Join(backendRoot, "deploy")
-
-	var cf, envFile string
+func (m *StartModel) composePaths() (cf, envFile string) {
+	isProd := m.cfg.Environment == EnvProduction
+	deployPath := filepath.Join(env.PlanePath(), "deploy")
 	if isProd {
 		cf = filepath.Join(deployPath, "production", "docker-compose.yaml")
 		envFile = filepath.Join(deployPath, "production", ".env")
@@ -97,24 +88,50 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 		cf = filepath.Join(deployPath, "development", "docker-compose.yaml")
 		envFile = filepath.Join(deployPath, "development", ".env")
 	}
+	return
+}
 
-	podmanSock := cfg.SocketPath
-	if podmanSock == "" {
-		podmanSock = PodmanSocket
-	}
-
-	withEnv := func(cmd *exec.Cmd) *exec.Cmd {
-		cmd.Env = append(os.Environ(), "ENV_TYPE="+cfg.Environment)
-		if runtime == "podman" {
-			cmd.Env = append(
-				cmd.Env,
-				"DOCKER_HOST=unix://"+podmanSock,
-				"DOCKER_SOCK="+podmanSock,
-			)
+func (m *StartModel) withEnv(cmd *exec.Cmd) *exec.Cmd {
+	cmd.Env = append(os.Environ(), "ENV_TYPE="+m.cfg.Environment)
+	if m.cfg.Runtime == "podman" {
+		sock := m.cfg.SocketPath
+		if sock == "" {
+			sock = PodmanSocket
 		}
-		return cmd
+		cmd.Env = append(
+			cmd.Env,
+			"DOCKER_HOST=unix://"+sock,
+			"DOCKER_SOCK="+sock,
+		)
 	}
+	return cmd
+}
 
+func (m *StartModel) rollback() tea.Cmd {
+	cf, envFile := m.composePaths()
+	rt := m.cfg.Runtime
+	if rt == "" {
+		rt = "docker"
+	}
+	return func() tea.Msg {
+		args := []string{"compose", "-f", cf, "--env-file", envFile, "down", "--remove-orphans", "--volumes"}
+		cmd := exec.CommandContext(context.Background(), rt, args...)
+		cmd.Env = append(os.Environ(), "ENV_TYPE="+m.cfg.Environment)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return rollbackDone{err: fmt.Errorf("rollback failed: %s", strings.TrimSpace(string(out)))}
+		}
+		return rollbackDone{}
+	}
+}
+
+func (m *StartModel) runStep(step int) tea.Cmd {
+	cfg := m.cfg
+	rt := cfg.Runtime
+	if rt == "" {
+		rt = "docker"
+	}
+	cf, envFile := m.composePaths()
 	steps := buildSteps(cfg)
 	if step >= len(steps) {
 		return nil
@@ -125,32 +142,38 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 		var err error
 
 		switch {
-		case strings.HasPrefix(label, "Generating secrets"):
-			scriptPath := filepath.Join(backendRoot, "scripts", "init-env.sh")
-
-			// Skip if .env already exists
+		case strings.HasPrefix(label, "Generating"):
+			scriptPath := filepath.Join(env.PlanePath(), "scripts", "init-env.sh")
 			if _, statErr := os.Stat(envFile); statErr == nil {
 				break
 			}
-
 			if _, statErr := os.Stat(scriptPath); statErr != nil {
-				err = fmt.Errorf("script not found: %s", scriptPath)
+				err = fmt.Errorf("init-env.sh not found at %s", scriptPath)
 				break
 			}
-			err = runScript(scriptPath)
+			cmd := exec.CommandContext(context.Background(), "bash", scriptPath)
+			cmd.Env = append(os.Environ(), "ENV_TYPE="+cfg.Environment)
+			out, e := cmd.CombinedOutput()
+			if e != nil {
+				err = fmt.Errorf("secret generation failed: %s", strings.TrimSpace(string(out)))
+			}
 
-		case strings.HasPrefix(label, "Writing environment"):
+		case strings.HasPrefix(label, "Writing"):
 			vars := map[string]string{
-				"RUNTIME_TYPE":   runtime,
+				"RUNTIME_TYPE":   rt,
 				"RUNTIME_SOCKET": cfg.SocketPath,
 			}
 			if cfg.CaddyEnabled {
 				vars["CADDY_ENABLED"] = "true"
-				vars["CADDY_BASE_DOMAIN"] = cfg.CaddyDomain
-				vars["CADDY_ACME_EMAIL"] = cfg.CaddyEmail
-				if cfg.CaddyStaging {
-					vars["CADDY_ACME_STAGING"] = "true"
+				if !cfg.CaddyLater {
+					vars["CADDY_BASE_DOMAIN"] = cfg.CaddyDomain
+					vars["CADDY_ACME_EMAIL"] = cfg.CaddyEmail
+					if cfg.CaddyStaging {
+						vars["CADDY_ACME_STAGING"] = "true"
+					}
 				}
+			} else {
+				vars["CADDY_ENABLED"] = "false"
 			}
 			if cfg.SMTPEnabled {
 				vars["SMTP_HOST"] = cfg.SMTPHost
@@ -162,91 +185,128 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 			}
 			err = writeEnvVars(envFile, vars)
 
-		case strings.HasPrefix(label, "Starting"):
+		case strings.HasPrefix(label, "Creating Docker networks"):
+			for _, network := range []string{"tidefly_proxy", "tidefly_internal"} {
+				cmd := exec.CommandContext(
+					context.Background(), rt,
+					"network", "create",
+					"--driver", "bridge",
+					"--label", "tidefly.managed=true",
+					network,
+				)
+				cmd.Env = append(os.Environ(), "ENV_TYPE="+cfg.Environment)
+				out, e := cmd.CombinedOutput()
+				if e != nil && !strings.Contains(string(out), "already exists") {
+					err = fmt.Errorf("failed to create network %s: %s", network, strings.TrimSpace(string(out)))
+					break
+				}
+			}
+
+		case strings.HasPrefix(label, "Cleaning up"):
+			args := []string{"compose", "-f", cf, "--env-file", envFile, "down", "--remove-orphans"}
+			cmd := exec.CommandContext(context.Background(), rt, args...)
+			cmd.Env = append(os.Environ(), "ENV_TYPE="+cfg.Environment)
+			out, e := cmd.CombinedOutput()
+			if e != nil &&
+				!strings.Contains(string(out), "no such file") &&
+				!strings.Contains(string(out), "does not exist") {
+				err = fmt.Errorf("cleanup failed: %s", strings.TrimSpace(string(out)))
+			}
+
+		case strings.HasPrefix(label, "Starting core"):
 			if _, statErr := os.Stat(cf); statErr != nil {
 				err = fmt.Errorf("compose file not found: %s", cf)
 				break
 			}
 			if _, statErr := os.Stat(envFile); statErr != nil {
-				err = fmt.Errorf("env file not found: %s", envFile)
+				err = fmt.Errorf(".env not found: %s", envFile)
 				break
 			}
-
-			var services []string
-			args := []string{"compose", "-f", cf, "--env-file", envFile, "up", "-d"}
-
-			if isProd {
-				services = []string{"caddy", "postgres", "redis", "backend"}
-				if cfg.WithDashboard {
-					args = append([]string{"--profile", "dashboard"}, args...)
-					services = append(services, "frontend")
-				}
-			} else {
-				services = []string{"caddy", "postgres", "redis", "mailpit"}
+			args := []string{
+				"compose", "-f", cf, "--env-file", envFile, "up", "-d",
+				"postgres", "redis", "caddy",
 			}
-
-			cmd := withEnv(exec.CommandContext(context.Background(), runtime, append(args, services...)...))
+			cmd := exec.CommandContext(context.Background(), rt, args...)
+			cmd.Env = append(os.Environ(), "ENV_TYPE="+cfg.Environment)
+			if rt == "podman" {
+				sock := cfg.SocketPath
+				if sock == "" {
+					sock = PodmanSocket
+				}
+				cmd.Env = append(cmd.Env, "DOCKER_HOST=unix://"+sock, "DOCKER_SOCK="+sock)
+			}
 			out, e := cmd.CombinedOutput()
 			if e != nil {
-				err = fmt.Errorf("compose up failed: %s", strings.TrimSpace(string(out)))
+				err = fmt.Errorf("failed to start core services: %s", strings.TrimSpace(string(out)))
 			}
 
 		case strings.HasPrefix(label, "Waiting for Postgres"):
-			deadline := time.Now().Add(60 * time.Second)
-			ready := false
+			deadline := time.Now().Add(90 * time.Second)
+			healthy := false
 			for time.Now().Before(deadline) {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				out, e := exec.CommandContext(
-					ctx, runtime, "inspect",
+					ctx, rt, "inspect",
 					"--format", "{{.State.Health.Status}}",
 					"tidefly_postgres",
 				).Output()
 				cancel()
 				if e == nil && strings.TrimSpace(string(out)) == "healthy" {
-					ready = true
+					healthy = true
 					break
 				}
 				time.Sleep(2 * time.Second)
 			}
-			if !ready {
-				err = fmt.Errorf("postgres not healthy after 60s")
+			if !healthy {
+				err = fmt.Errorf("postgres not healthy after 90s")
 			}
 
 		case strings.HasPrefix(label, "Waiting for Redis"):
-			ready := false
 			deadline := time.Now().Add(30 * time.Second)
+			healthy := false
 			for time.Now().Before(deadline) {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				out, e := exec.CommandContext(
-					ctx, runtime, "inspect",
+					ctx, rt, "inspect",
 					"--format", "{{.State.Health.Status}}",
 					"tidefly_redis",
 				).Output()
 				cancel()
 				if e == nil && strings.TrimSpace(string(out)) == "healthy" {
-					ready = true
+					healthy = true
 					break
 				}
 				time.Sleep(2 * time.Second)
 			}
-			if !ready {
+			if !healthy {
 				err = fmt.Errorf("redis not healthy after 30s")
 			}
 
-		case strings.HasPrefix(label, "Running database"):
-			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-			out, e := exec.CommandContext(
-				ctx,
-				"bash", "-c",
-				fmt.Sprintf(
-					"cd %s && set -a && source %s && set +a && go run ./cmd/tidefly --migrate-only",
-					backendRoot, envFile,
-				),
-			).CombinedOutput()
-			cancel()
-			if e != nil {
-				err = fmt.Errorf("migrations failed: %s", strings.TrimSpace(string(out)))
+		case strings.HasPrefix(label, "Starting backend"):
+			var args []string
+			if cfg.WithDashboard {
+				args = []string{
+					"compose", "-f", cf, "--env-file", envFile,
+					"--profile", "dashboard", "up", "-d", "backend", "ui",
+				}
+			} else {
+				args = []string{"compose", "-f", cf, "--env-file", envFile, "up", "-d", "backend"}
 			}
+			cmd := exec.CommandContext(context.Background(), rt, args...)
+			cmd.Env = append(os.Environ(), "ENV_TYPE="+cfg.Environment)
+			if rt == "podman" {
+				sock := cfg.SocketPath
+				if sock == "" {
+					sock = PodmanSocket
+				}
+				cmd.Env = append(cmd.Env, "DOCKER_HOST=unix://"+sock, "DOCKER_SOCK="+sock)
+			}
+			out, e := cmd.CombinedOutput()
+			if e != nil {
+				err = fmt.Errorf("failed to start backend: %s", strings.TrimSpace(string(out)))
+				break
+			}
+			time.Sleep(3 * time.Second)
 		}
 
 		return startStepResult{step: step, err: err}
@@ -255,6 +315,16 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 
 func (m *StartModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+
+	case rollbackDone:
+		m.rollingBack = false
+		if msg.err != nil {
+			m.steps[m.current].errMsg += fmt.Sprintf(" (rollback error: %v)", msg.err)
+		} else {
+			m.steps[m.current].errMsg += " — rollback complete, all containers stopped"
+		}
+		return m, nil
+
 	case startStepResult:
 		if msg.step == -1 {
 			return m, m.runStep(0)
@@ -264,7 +334,8 @@ func (m *StartModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.steps[msg.step].errMsg = msg.err.Error()
 			m.finished = true
 			m.hasError = true
-			return m, nil
+			m.rollingBack = true
+			return m, m.rollback()
 		}
 		m.steps[msg.step].done = true
 		next := msg.step + 1
@@ -273,7 +344,7 @@ func (m *StartModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.runStep(next)
 		}
 		m.finished = true
-		return m, func() tea.Msg { return NavigateTo{Page: PageAdmin, Config: m.cfg} }
+		return m, navigate(PageAdmin, m.cfg)
 
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -281,19 +352,7 @@ func (m *StartModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case tea.KeyMsg:
-		switch {
-		case m.hasError && msg.String() == "r":
-			for i, s := range m.steps {
-				if s.failed {
-					m.steps[i].failed = false
-					m.steps[i].errMsg = ""
-					m.finished = false
-					m.hasError = false
-					m.current = i
-					return m, tea.Batch(m.spinner.Tick, m.runStep(i))
-				}
-			}
-		case key.Matches(msg, keys.Quit):
+		if key.Matches(msg, keys.Quit) && !m.rollingBack {
 			return m, tea.Quit
 		}
 	}
@@ -330,11 +389,15 @@ func (m *StartModel) View() string {
 		steps += line + "\n\n"
 	}
 
-	help := ""
-	if m.hasError {
-		help = "\n" + styles.StatusWarn.Render("Setup failed") + "\n" +
-			styles.Help.Render("r to retry  •  q to quit")
-	} else {
+	var help string
+	switch {
+	case m.rollingBack:
+		help = "\n" + styles.StatusWarn.Render("⟳ Rolling back — stopping all containers...") + "\n" +
+			styles.Help.Render("please wait...")
+	case m.hasError:
+		help = "\n" + styles.StatusErr.Render("✗ Setup failed — all containers have been stopped") + "\n" +
+			styles.Help.Render("fix the issue above and run tidefly-tui again  •  q to quit")
+	default:
 		help = styles.Help.Render("q to quit")
 	}
 
@@ -346,14 +409,8 @@ func (m *StartModel) View() string {
 	)
 }
 
-func runScript(path string, args ...string) error {
-	ctx := context.Background()
-	cmd := exec.CommandContext(ctx, "bash", append([]string{path}, args...)...)
-	return cmd.Run()
-}
-
 func writeEnvVars(path string, vars map[string]string) error {
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return err
 	}
@@ -379,7 +436,7 @@ func writeEnvVars(path string, vars map[string]string) error {
 		}
 		lines = append(lines, line)
 	}
-	if err := scanner.Err(); err != nil {
+	if err = scanner.Err(); err != nil {
 		return err
 	}
 	for k, v := range vars {
@@ -387,16 +444,15 @@ func writeEnvVars(path string, vars map[string]string) error {
 			lines = append(lines, k+"="+v)
 		}
 	}
-
-	if err := f.Truncate(0); err != nil {
+	if err = f.Truncate(0); err != nil {
 		return err
 	}
-	if _, err := f.Seek(0, 0); err != nil {
+	if _, err = f.Seek(0, 0); err != nil {
 		return err
 	}
 	w := bufio.NewWriter(f)
 	for _, l := range lines {
-		if _, err := fmt.Fprintln(w, l); err != nil {
+		if _, err = fmt.Fprintln(w, l); err != nil {
 			return err
 		}
 	}

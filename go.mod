@@ -1,4 +1,4 @@
-module github.com/codifystudios/tidefly/tui
+module github.com/tidefly-oss/tidefly-tui
 
 go 1.26.1
 

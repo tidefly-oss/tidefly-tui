@@ -7,8 +7,6 @@ import (
 	"strings"
 )
 
-var DefaultEnv = "development"
-
 func Root() string {
 	cwd, _ := os.Getwd()
 	if filepath.Base(cwd) == "tui" {
@@ -20,12 +18,15 @@ func Root() string {
 	return filepath.Dir(cwd)
 }
 
+func PlanePath() string {
+	return filepath.Join(Root(), "tidefly-plane")
+}
+
 func Load(extraPaths ...string) error {
 	envType := os.Getenv("ENV_CHOICE")
 	if envType == "" {
-		envType = DefaultEnv
+		envType = "development"
 	}
-
 	candidates := buildCandidates(envType, extraPaths...)
 	for _, p := range candidates {
 		if err := loadFile(p); err == nil {
@@ -44,15 +45,11 @@ func GetOrLoad(key string) string {
 }
 
 func buildCandidates(envType string, extra ...string) []string {
-	cwd := filepath.Join(Root(), "tidefly-backend")
-
+	plane := PlanePath()
 	var paths []string
 	paths = append(paths, extra...)
-
-	// richtige Pfade
-	paths = append(paths, filepath.Join(cwd, "deploy", envType, ".env")) // z.B. deploy/development/.env
-	paths = append(paths, filepath.Join(cwd, ".env"))                    // optional: fallback
-
+	paths = append(paths, filepath.Join(plane, "deploy", envType, ".env"))
+	paths = append(paths, filepath.Join(plane, ".env"))
 	return paths
 }
 

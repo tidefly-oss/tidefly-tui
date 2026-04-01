@@ -12,12 +12,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/google/uuid"
+	"github.com/tidefly-oss/tidefly-tui/internal/env"
+	"github.com/tidefly-oss/tidefly-tui/internal/styles"
 	"golang.org/x/crypto/argon2"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-
-	"github.com/codifystudios/tidefly/tui/internal/env"
-	"github.com/codifystudios/tidefly/tui/internal/styles"
 )
 
 // hashPassword hashes a password using Argon2id (OWASP 2024 params).
