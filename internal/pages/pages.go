@@ -43,6 +43,7 @@ type SetupConfig struct {
 	WithDashboard bool
 
 	CaddyEnabled bool
+	CaddyLater   bool
 	CaddyDomain  string
 	CaddyEmail   string
 	CaddyStaging bool
