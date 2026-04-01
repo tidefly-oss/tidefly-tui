@@ -40,20 +40,16 @@ go run ./cmd/tidefly-installer
 
 ## Contributing
 
-See [CONTRIBUTING.md](contributing.md) for setup instructions and guidelines.
+See [contributing.md](contributing.md) for setup instructions and guidelines.
 
 ## Security
 
 Please do **not** open public issues for security vulnerabilities — use [GitHub Private Security Advisories](https://github.com/tidefly-oss/tidefly-tui/security/advisories/new) instead.
 
-## License
-
-[AGPLv3](LICENSE)
-
 ---
 
 <div align="center">
 
-Built with ❤️ · [AGPLv3](https://github.com/tidefly-oss/tidefly-tui/blob/main/LICENSE) · [Report a vulnerability](https://github.com/tidefly-oss/tidefly-tui/security/advisories/new)
+Built with ❤️ ·[AGPLv3](https://github.com/tidefly-oss/tidefly-tui/blob/main/LICENSE) · [Report a vulnerability](https://github.com/tidefly-oss/tidefly-tui/security/advisories/new)
 
 </div>
