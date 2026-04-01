@@ -5,7 +5,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/tidefly-oss/tidefly-tui/internal/styles"
+	"github.com/codifystudios/tidefly/tui/internal/styles"
 )
 
 type ExtrasModel struct {

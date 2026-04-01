@@ -7,42 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-#### Caddy Migration
-- Traefik page replaced with Caddy page (`caddy.go`)
-- `SetupConfig` fields `TraefikEnabled/Domain/Email/Staging` → `CaddyEnabled/Domain/Email/Staging`
-- `PageTraefik` → `PageCaddy` in navigation constants
-- `start.go` env vars updated: `TRAEFIK_*` → `CADDY_*`
-- `done.go` URLs updated to use Caddy domain
-- `dashboard.go` navigates to `PageCaddy` instead of `PageTraefik`
-- `main.go` `mergeConfig` updated for Caddy fields
-
-#### Auth
-- `admin.go` password hashing migrated from bcrypt to Argon2id
-- Argon2id implementation inlined (TUI is a separate Go module from backend)
-- Hash format matches backend exactly — user created via TUI can log in immediately
-
-#### Wizard Flow
-- Full rewrite: Home → Runtime → Environment → Dashboard → Caddy → SMTP → Extras → Start → Admin → Done
-- `installer` package — Docker and Podman auto-install via official scripts
-- Runtime page: shows installed/not-installed status, auto-installs if missing
-- Caddy page: multi-step (toggle → domain → ACME email → staging/production CA)
-- All config accumulated in `SetupConfig` across pages, written to `.env` in Writing step
-- `start.go` service label updated to "Caddy, Postgres, Redis, Mailpit"
-
 ---
 
-## [0.0.1-alpha] - TBD
+## [0.0.1-alpha.1] - 2026-03-31
 
-> First internal alpha. Interactive Bubble Tea setup wizard for Tidefly.
+> First public alpha. Interactive Bubble Tea setup wizard for Tidefly.
 
 ### Added
-- Initial Bubble Tea TUI setup wizard
-- Docker and Podman runtime detection and configuration
-- Secret generation and `.env` writing
+- Interactive setup wizard — Home → Runtime → Environment → Dashboard → Caddy → SMTP → Start → Admin → Done
+- Docker and Podman runtime detection — auto-installs if not found
+- Secret generation via `init-env.sh` — all secrets generated on first run
+- Environment config writing — runtime, Caddy, SMTP vars patched into `.env`
+- Docker network setup — `tidefly_proxy` and `tidefly_internal` created automatically
+- Cleanup step — removes orphaned containers before each setup run
+- Rollback on failure — `docker compose down` called automatically if any step fails
+- Caddy configuration — enable/skip, configure domain now or later in the UI
+- SMTP configuration — optional, supports None/STARTTLS/TLS
+- Admin account creation — Argon2id hashed, written directly to Postgres
+- curl install script — `scripts/install.sh` for one-line server installation
+- Module path migrated to `github.com/tidefly-oss/tidefly-tui`
 
 ---
 
-[Unreleased]: https://github.com/tidefly-oss/tidefly-tui/compare/v0.0.1-alpha...HEAD
-[0.0.1-alpha]: https://github.com/tidefly-oss/tidefly-tui/releases/tag/v0.0.1-alpha
+## Roadmap
+
+### Next (Beta)
+- [ ] Update command — pull latest images and restart services
+- [ ] Uninstall command
+- [ ] Agent node setup wizard
+
+---
+
+[Unreleased]: https://github.com/tidefly-oss/tidefly-tui/compare/v0.0.1-alpha.1...HEAD
+[0.0.1-alpha.1]: https://github.com/tidefly-oss/tidefly-tui/releases/tag/v0.0.1-alpha.1
+
+
+<div align="center">
+
+Built with ❤️ · [AGPLv3](https://github.com/tidefly-oss/tidefly-tui/blob/main/LICENSE) · [Report a vulnerability](https://github.com/tidefly-oss/tidefly-tui/security/advisories/new)
+
+</div>
