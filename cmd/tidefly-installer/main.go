@@ -8,9 +8,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/codifystudios/tidefly/tui/internal/env"
-	"github.com/codifystudios/tidefly/tui/internal/pages"
-	"github.com/codifystudios/tidefly/tui/internal/styles"
+	"github.com/tidefly-oss/tidefly-tui/internal/env"
+	"github.com/tidefly-oss/tidefly-tui/internal/pages"
+	"github.com/tidefly-oss/tidefly-tui/internal/styles"
 )
 
 type AppModel struct {

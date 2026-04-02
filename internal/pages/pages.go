@@ -7,6 +7,7 @@ const (
 	EnvProduction  = "production"
 	OSLinux        = "linux"
 	PodmanSocket   = "/run/user/1000/podman/podman.sock"
+	runtimePodman  = "podman"
 )
 
 type Model interface {
@@ -43,6 +44,7 @@ type SetupConfig struct {
 	WithDashboard bool
 
 	CaddyEnabled bool
+	CaddyLater   bool
 	CaddyDomain  string
 	CaddyEmail   string
 	CaddyStaging bool
