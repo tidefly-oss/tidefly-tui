@@ -93,7 +93,7 @@ func (m *StartModel) composePaths() (cf, envFile string) {
 
 func (m *StartModel) withEnv(cmd *exec.Cmd) *exec.Cmd {
 	cmd.Env = append(os.Environ(), "ENV_TYPE="+m.cfg.Environment)
-	if m.cfg.Runtime == "podman" {
+	if m.cfg.Runtime == runtimePodman {
 		sock := m.cfg.SocketPath
 		if sock == "" {
 			sock = PodmanSocket
@@ -125,6 +125,149 @@ func (m *StartModel) rollback() tea.Cmd {
 	}
 }
 
+func podmanEnv(cmd *exec.Cmd, rt, socketPath, environment string) *exec.Cmd {
+	cmd.Env = append(os.Environ(), "ENV_TYPE="+environment)
+	if rt == runtimePodman {
+		sock := socketPath
+		if sock == "" {
+			sock = PodmanSocket
+		}
+		cmd.Env = append(cmd.Env, "DOCKER_HOST=unix://"+sock, "DOCKER_SOCK="+sock)
+	}
+	return cmd
+}
+
+func stepGenerateSecrets(cfg SetupConfig, envFile string) error {
+	scriptPath := filepath.Join(env.PlanePath(), "scripts", "init-env.sh")
+	if _, err := os.Stat(envFile); err == nil {
+		return nil
+	}
+	if _, err := os.Stat(scriptPath); err != nil {
+		return fmt.Errorf("init-env.sh not found at %s", scriptPath)
+	}
+	cmd := exec.CommandContext(context.Background(), "bash", scriptPath)
+	cmd.Env = append(os.Environ(), "ENV_TYPE="+cfg.Environment)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("secret generation failed: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func stepWriteEnv(cfg SetupConfig, rt, envFile string) error {
+	vars := map[string]string{
+		"RUNTIME_TYPE":   rt,
+		"RUNTIME_SOCKET": cfg.SocketPath,
+	}
+	if cfg.CaddyEnabled {
+		vars["CADDY_ENABLED"] = "true"
+		if !cfg.CaddyLater {
+			vars["CADDY_BASE_DOMAIN"] = cfg.CaddyDomain
+			vars["CADDY_ACME_EMAIL"] = cfg.CaddyEmail
+			if cfg.CaddyStaging {
+				vars["CADDY_ACME_STAGING"] = "true"
+			}
+		}
+	} else {
+		vars["CADDY_ENABLED"] = "false"
+	}
+	if cfg.SMTPEnabled {
+		vars["SMTP_HOST"] = cfg.SMTPHost
+		vars["SMTP_PORT"] = cfg.SMTPPort
+		vars["SMTP_USER"] = cfg.SMTPUser
+		vars["SMTP_PASSWORD"] = cfg.SMTPPassword
+		vars["SMTP_FROM"] = cfg.SMTPFrom
+		vars["SMTP_TLS"] = cfg.SMTPTLS
+	}
+	return writeEnvVars(envFile, vars)
+}
+
+func stepCreateNetworks(cfg SetupConfig, rt string) error {
+	for _, network := range []string{"tidefly_proxy", "tidefly_internal"} {
+		cmd := exec.CommandContext(
+			context.Background(), rt,
+			"network", "create", "--driver", "bridge", "--label", "tidefly.managed=true", network,
+		)
+		cmd.Env = append(os.Environ(), "ENV_TYPE="+cfg.Environment)
+		out, e := cmd.CombinedOutput()
+		if e != nil && !strings.Contains(string(out), "already exists") {
+			return fmt.Errorf("failed to create network %s: %s", network, strings.TrimSpace(string(out)))
+		}
+	}
+	return nil
+}
+
+func stepCleanup(cfg SetupConfig, rt, cf, envFile string) error {
+	args := []string{"compose", "-f", cf, "--env-file", envFile, "down", "--remove-orphans"}
+	cmd := exec.CommandContext(context.Background(), rt, args...)
+	cmd.Env = append(os.Environ(), "ENV_TYPE="+cfg.Environment)
+	out, e := cmd.CombinedOutput()
+	if e != nil &&
+		!strings.Contains(string(out), "no such file") &&
+		!strings.Contains(string(out), "does not exist") {
+		return fmt.Errorf("cleanup failed: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func stepStartCore(cfg SetupConfig, rt, cf, envFile string) error {
+	if _, err := os.Stat(cf); err != nil {
+		return fmt.Errorf("compose file not found: %s", cf)
+	}
+	if _, err := os.Stat(envFile); err != nil {
+		return fmt.Errorf(".env not found: %s", envFile)
+	}
+	args := []string{"compose", "-f", cf, "--env-file", envFile, "up", "-d", "postgres", "redis", "caddy"}
+	cmd := podmanEnv(exec.CommandContext(context.Background(), rt, args...), rt, cfg.SocketPath, cfg.Environment)
+	out, e := cmd.CombinedOutput()
+	if e != nil {
+		return fmt.Errorf("failed to start core services: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func stepWaitHealthy(rt, container string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		out, e := exec.CommandContext(ctx, rt, "inspect", "--format", "{{.State.Health.Status}}", container).Output()
+		cancel()
+		if e == nil && strings.TrimSpace(string(out)) == "healthy" {
+			return nil
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return fmt.Errorf("%s not healthy after %s", container, timeout)
+}
+
+func stepStartBackend(cfg SetupConfig, rt, cf, envFile string) error {
+	var args []string
+	if cfg.WithDashboard {
+		args = []string{
+			"compose",
+			"-f",
+			cf,
+			"--env-file",
+			envFile,
+			"--profile",
+			"dashboard",
+			"up",
+			"-d",
+			"backend",
+			"ui",
+		}
+	} else {
+		args = []string{"compose", "-f", cf, "--env-file", envFile, "up", "-d", "backend"}
+	}
+	cmd := podmanEnv(exec.CommandContext(context.Background(), rt, args...), rt, cfg.SocketPath, cfg.Environment)
+	out, e := cmd.CombinedOutput()
+	if e != nil {
+		return fmt.Errorf("failed to start backend: %s", strings.TrimSpace(string(out)))
+	}
+	time.Sleep(3 * time.Second)
+	return nil
+}
+
 func (m *StartModel) runStep(step int) tea.Cmd {
 	cfg := m.cfg
 	rt := cfg.Runtime
@@ -140,175 +283,24 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 
 	return func() tea.Msg {
 		var err error
-
 		switch {
 		case strings.HasPrefix(label, "Generating"):
-			scriptPath := filepath.Join(env.PlanePath(), "scripts", "init-env.sh")
-			if _, statErr := os.Stat(envFile); statErr == nil {
-				break
-			}
-			if _, statErr := os.Stat(scriptPath); statErr != nil {
-				err = fmt.Errorf("init-env.sh not found at %s", scriptPath)
-				break
-			}
-			cmd := exec.CommandContext(context.Background(), "bash", scriptPath)
-			cmd.Env = append(os.Environ(), "ENV_TYPE="+cfg.Environment)
-			out, e := cmd.CombinedOutput()
-			if e != nil {
-				err = fmt.Errorf("secret generation failed: %s", strings.TrimSpace(string(out)))
-			}
-
+			err = stepGenerateSecrets(cfg, envFile)
 		case strings.HasPrefix(label, "Writing"):
-			vars := map[string]string{
-				"RUNTIME_TYPE":   rt,
-				"RUNTIME_SOCKET": cfg.SocketPath,
-			}
-			if cfg.CaddyEnabled {
-				vars["CADDY_ENABLED"] = "true"
-				if !cfg.CaddyLater {
-					vars["CADDY_BASE_DOMAIN"] = cfg.CaddyDomain
-					vars["CADDY_ACME_EMAIL"] = cfg.CaddyEmail
-					if cfg.CaddyStaging {
-						vars["CADDY_ACME_STAGING"] = "true"
-					}
-				}
-			} else {
-				vars["CADDY_ENABLED"] = "false"
-			}
-			if cfg.SMTPEnabled {
-				vars["SMTP_HOST"] = cfg.SMTPHost
-				vars["SMTP_PORT"] = cfg.SMTPPort
-				vars["SMTP_USER"] = cfg.SMTPUser
-				vars["SMTP_PASSWORD"] = cfg.SMTPPassword
-				vars["SMTP_FROM"] = cfg.SMTPFrom
-				vars["SMTP_TLS"] = cfg.SMTPTLS
-			}
-			err = writeEnvVars(envFile, vars)
-
+			err = stepWriteEnv(cfg, rt, envFile)
 		case strings.HasPrefix(label, "Creating Docker networks"):
-			for _, network := range []string{"tidefly_proxy", "tidefly_internal"} {
-				cmd := exec.CommandContext(
-					context.Background(), rt,
-					"network", "create",
-					"--driver", "bridge",
-					"--label", "tidefly.managed=true",
-					network,
-				)
-				cmd.Env = append(os.Environ(), "ENV_TYPE="+cfg.Environment)
-				out, e := cmd.CombinedOutput()
-				if e != nil && !strings.Contains(string(out), "already exists") {
-					err = fmt.Errorf("failed to create network %s: %s", network, strings.TrimSpace(string(out)))
-					break
-				}
-			}
-
+			err = stepCreateNetworks(cfg, rt)
 		case strings.HasPrefix(label, "Cleaning up"):
-			args := []string{"compose", "-f", cf, "--env-file", envFile, "down", "--remove-orphans"}
-			cmd := exec.CommandContext(context.Background(), rt, args...)
-			cmd.Env = append(os.Environ(), "ENV_TYPE="+cfg.Environment)
-			out, e := cmd.CombinedOutput()
-			if e != nil &&
-				!strings.Contains(string(out), "no such file") &&
-				!strings.Contains(string(out), "does not exist") {
-				err = fmt.Errorf("cleanup failed: %s", strings.TrimSpace(string(out)))
-			}
-
+			err = stepCleanup(cfg, rt, cf, envFile)
 		case strings.HasPrefix(label, "Starting core"):
-			if _, statErr := os.Stat(cf); statErr != nil {
-				err = fmt.Errorf("compose file not found: %s", cf)
-				break
-			}
-			if _, statErr := os.Stat(envFile); statErr != nil {
-				err = fmt.Errorf(".env not found: %s", envFile)
-				break
-			}
-			args := []string{
-				"compose", "-f", cf, "--env-file", envFile, "up", "-d",
-				"postgres", "redis", "caddy",
-			}
-			cmd := exec.CommandContext(context.Background(), rt, args...)
-			cmd.Env = append(os.Environ(), "ENV_TYPE="+cfg.Environment)
-			if rt == "podman" {
-				sock := cfg.SocketPath
-				if sock == "" {
-					sock = PodmanSocket
-				}
-				cmd.Env = append(cmd.Env, "DOCKER_HOST=unix://"+sock, "DOCKER_SOCK="+sock)
-			}
-			out, e := cmd.CombinedOutput()
-			if e != nil {
-				err = fmt.Errorf("failed to start core services: %s", strings.TrimSpace(string(out)))
-			}
-
+			err = stepStartCore(cfg, rt, cf, envFile)
 		case strings.HasPrefix(label, "Waiting for Postgres"):
-			deadline := time.Now().Add(90 * time.Second)
-			healthy := false
-			for time.Now().Before(deadline) {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				out, e := exec.CommandContext(
-					ctx, rt, "inspect",
-					"--format", "{{.State.Health.Status}}",
-					"tidefly_postgres",
-				).Output()
-				cancel()
-				if e == nil && strings.TrimSpace(string(out)) == "healthy" {
-					healthy = true
-					break
-				}
-				time.Sleep(2 * time.Second)
-			}
-			if !healthy {
-				err = fmt.Errorf("postgres not healthy after 90s")
-			}
-
+			err = stepWaitHealthy(rt, "tidefly_postgres", 90*time.Second)
 		case strings.HasPrefix(label, "Waiting for Redis"):
-			deadline := time.Now().Add(30 * time.Second)
-			healthy := false
-			for time.Now().Before(deadline) {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				out, e := exec.CommandContext(
-					ctx, rt, "inspect",
-					"--format", "{{.State.Health.Status}}",
-					"tidefly_redis",
-				).Output()
-				cancel()
-				if e == nil && strings.TrimSpace(string(out)) == "healthy" {
-					healthy = true
-					break
-				}
-				time.Sleep(2 * time.Second)
-			}
-			if !healthy {
-				err = fmt.Errorf("redis not healthy after 30s")
-			}
-
+			err = stepWaitHealthy(rt, "tidefly_redis", 30*time.Second)
 		case strings.HasPrefix(label, "Starting backend"):
-			var args []string
-			if cfg.WithDashboard {
-				args = []string{
-					"compose", "-f", cf, "--env-file", envFile,
-					"--profile", "dashboard", "up", "-d", "backend", "ui",
-				}
-			} else {
-				args = []string{"compose", "-f", cf, "--env-file", envFile, "up", "-d", "backend"}
-			}
-			cmd := exec.CommandContext(context.Background(), rt, args...)
-			cmd.Env = append(os.Environ(), "ENV_TYPE="+cfg.Environment)
-			if rt == "podman" {
-				sock := cfg.SocketPath
-				if sock == "" {
-					sock = PodmanSocket
-				}
-				cmd.Env = append(cmd.Env, "DOCKER_HOST=unix://"+sock, "DOCKER_SOCK="+sock)
-			}
-			out, e := cmd.CombinedOutput()
-			if e != nil {
-				err = fmt.Errorf("failed to start backend: %s", strings.TrimSpace(string(out)))
-				break
-			}
-			time.Sleep(3 * time.Second)
+			err = stepStartBackend(cfg, rt, cf, envFile)
 		}
-
 		return startStepResult{step: step, err: err}
 	}
 }
