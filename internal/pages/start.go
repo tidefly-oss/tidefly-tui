@@ -57,6 +57,7 @@ func buildSteps(cfg SetupConfig) []startStep {
 		backendLabel = "Starting backend + dashboard"
 	}
 	return []startStep{
+		{label: "Cloning tidefly-plane repository"},
 		{label: "Generating secrets"},
 		{label: "Writing environment config"},
 		{label: "Creating Docker networks"},
@@ -98,6 +99,10 @@ func (m *StartModel) rollback() tea.Cmd {
 		rt = "docker"
 	}
 	return func() tea.Msg {
+		// Only rollback if envFile exists — if clone failed there's nothing to roll back
+		if _, err := os.Stat(envFile); err != nil {
+			return rollbackDone{}
+		}
 		args := []string{"compose", "-f", cf, "--env-file", envFile, "down", "--remove-orphans", "--volumes"}
 		cmd := exec.CommandContext(context.Background(), rt, args...)
 		cmd.Env = append(os.Environ(), "ENV_TYPE="+m.cfg.Environment)
@@ -119,6 +124,31 @@ func podmanEnv(cmd *exec.Cmd, rt, socketPath, environment string) *exec.Cmd {
 		cmd.Env = append(cmd.Env, "DOCKER_HOST=unix://"+sock, "DOCKER_SOCK="+sock)
 	}
 	return cmd
+}
+
+func stepCloneRepo() error {
+	path := env.PlanePath()
+	if _, err := os.Stat(filepath.Join(path, ".git")); err == nil {
+		// already cloned — pull latest
+		cmd := exec.CommandContext(context.Background(), "git", "-C", path, "pull", "--ff-only")
+		out, e := cmd.CombinedOutput()
+		if e != nil {
+			return fmt.Errorf("git pull failed: %s", strings.TrimSpace(string(out)))
+		}
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+	cmd := exec.CommandContext(
+		context.Background(),
+		"git", "clone", "https://github.com/tidefly-oss/tidefly-plane.git", path,
+	)
+	out, e := cmd.CombinedOutput()
+	if e != nil {
+		return fmt.Errorf("git clone failed: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 func stepGenerateSecrets(cfg SetupConfig, envFile string) error {
@@ -228,17 +258,8 @@ func stepStartBackend(cfg SetupConfig, rt, cf, envFile string) error {
 	var args []string
 	if cfg.WithDashboard {
 		args = []string{
-			"compose",
-			"-f",
-			cf,
-			"--env-file",
-			envFile,
-			"--profile",
-			"dashboard",
-			"up",
-			"-d",
-			"backend",
-			"ui",
+			"compose", "-f", cf, "--env-file", envFile,
+			"--profile", "dashboard", "up", "-d", "backend", "ui",
 		}
 	} else {
 		args = []string{"compose", "-f", cf, "--env-file", envFile, "up", "-d", "backend"}
@@ -268,6 +289,8 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 	return func() tea.Msg {
 		var err error
 		switch {
+		case strings.HasPrefix(label, "Cloning"):
+			err = stepCloneRepo()
 		case strings.HasPrefix(label, "Generating"):
 			err = stepGenerateSecrets(cfg, envFile)
 		case strings.HasPrefix(label, "Writing"):

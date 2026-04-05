@@ -7,19 +7,11 @@ import (
 	"strings"
 )
 
-func Root() string {
-	cwd, _ := os.Getwd()
-	if filepath.Base(cwd) == "tui" {
-		return filepath.Dir(cwd)
-	}
-	if _, err := os.Stat(filepath.Join(cwd, "tui")); err == nil {
-		return cwd
-	}
-	return filepath.Dir(cwd)
-}
-
 func PlanePath() string {
-	return filepath.Join(Root(), "tidefly-plane")
+	if p := os.Getenv("TIDEFLY_PLANE_PATH"); p != "" {
+		return p
+	}
+	return "/opt/tidefly/plane"
 }
 
 func Load(extraPaths ...string) error {
@@ -63,7 +55,6 @@ func loadFile(path string) error {
 		return err
 	}
 	defer func() { _ = f.Close() }()
-
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
