@@ -120,7 +120,7 @@ func (m *StartModel) rollback() tea.Cmd {
 }
 
 func podmanEnv(cmd *exec.Cmd, rt, socketPath, environment string) *exec.Cmd {
-	cmd.Env = append(os.Environ(), "ENV_TYPE="+environment)
+	cmd.Env = append(os.Environ(), envTypePrefix+environment)
 	if rt == runtimePodman {
 		sock := socketPath
 		if sock == "" {
@@ -272,11 +272,11 @@ func stepStartBackend(cfg SetupConfig, rt, cf, envFile string) error {
 	var args []string
 	if cfg.WithDashboard {
 		args = []string{
-			"compose", "-f", cf, "--env-file", envFile,
+			"compose", "-f", cf, flagEnvFile, envFile,
 			"--profile", "dashboard", "up", "-d", "backend", "ui",
 		}
 	} else {
-		args = []string{"compose", "-f", cf, "--env-file", envFile, "up", "-d", "backend"}
+		args = []string{"compose", "-f", cf, flagEnvFile, envFile, "up", "-d", "backend"}
 	}
 	cmd := podmanEnv(exec.CommandContext(context.Background(), rt, args...), rt, cfg.SocketPath, cfg.Environment)
 	out, e := cmd.CombinedOutput()
