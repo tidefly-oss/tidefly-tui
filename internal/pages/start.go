@@ -133,7 +133,6 @@ func podmanEnv(cmd *exec.Cmd, rt, socketPath, environment string) *exec.Cmd {
 func stepCloneRepo() error {
 	path := env.PlanePath()
 	if _, err := os.Stat(filepath.Join(path, ".git")); err == nil {
-		// already cloned — pull latest
 		cmd := exec.CommandContext(context.Background(), "git", "-C", path, "pull", "--ff-only")
 		out, e := cmd.CombinedOutput()
 		if e != nil {
@@ -141,9 +140,20 @@ func stepCloneRepo() error {
 		}
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
+
+	// Create dir with sudo + chown to current user
+	user := os.Getenv("USER")
+	cmds := []string{
+		"sudo mkdir -p " + path,
+		"sudo chown -R " + user + ":" + user + " /opt/tidefly",
 	}
+	for _, c := range cmds {
+		out, e := exec.CommandContext(context.Background(), "sh", "-c", c).CombinedOutput()
+		if e != nil {
+			return fmt.Errorf("failed to create directory: %s", strings.TrimSpace(string(out)))
+		}
+	}
+
 	cmd := exec.CommandContext(
 		context.Background(),
 		"git", "clone", "https://github.com/tidefly-oss/tidefly-plane.git", path,
@@ -154,7 +164,6 @@ func stepCloneRepo() error {
 	}
 	return nil
 }
-
 func stepGenerateSecrets(cfg SetupConfig, envFile string) error {
 	scriptPath := filepath.Join(env.PlanePath(), "scripts", "init-env.sh")
 	if _, err := os.Stat(envFile); err == nil {
