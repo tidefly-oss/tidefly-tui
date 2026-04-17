@@ -24,6 +24,11 @@ const (
     envTypePrefix = "ENV_TYPE="
 )
 
+const (
+	flagEnvFile   = "--env-file"
+	envTypePrefix = "ENV_TYPE="
+)
+
 type startStepResult struct {
 	step int
 	err  error
