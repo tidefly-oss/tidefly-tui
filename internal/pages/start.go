@@ -19,9 +19,10 @@ import (
 	"github.com/tidefly-oss/tidefly-tui/internal/env"
 	"github.com/tidefly-oss/tidefly-tui/internal/styles"
 )
+
 const (
-    flagEnvFile = "--env-file"
-    envTypePrefix = "ENV_TYPE="
+	flagEnvFile   = "--env-file"
+	envTypePrefix = "ENV_TYPE="
 )
 
 const (
