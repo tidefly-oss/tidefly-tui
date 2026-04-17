@@ -20,6 +20,11 @@ import (
 	"github.com/tidefly-oss/tidefly-tui/internal/styles"
 )
 
+const (
+	flagEnvFile   = "--env-file"
+	envTypePrefix = "ENV_TYPE="
+)
+
 type startStepResult struct {
 	step int
 	err  error
@@ -103,9 +108,9 @@ func (m *StartModel) rollback() tea.Cmd {
 		if _, err := os.Stat(envFile); err != nil {
 			return rollbackDone{}
 		}
-		args := []string{"compose", "-f", cf, "--env-file", envFile, "down", "--remove-orphans", "--volumes"}
+		args := []string{"compose", "-f", cf, flagEnvFile, envFile, "down", "--remove-orphans", "--volumes"}
 		cmd := exec.CommandContext(context.Background(), rt, args...)
-		cmd.Env = append(os.Environ(), "ENV_TYPE="+m.cfg.Environment)
+		cmd.Env = append(os.Environ(), envTypePrefix+m.cfg.Environment)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			return rollbackDone{err: fmt.Errorf("rollback failed: %s", strings.TrimSpace(string(out)))}
@@ -129,7 +134,6 @@ func podmanEnv(cmd *exec.Cmd, rt, socketPath, environment string) *exec.Cmd {
 func stepCloneRepo() error {
 	path := env.PlanePath()
 	if _, err := os.Stat(filepath.Join(path, ".git")); err == nil {
-		// already cloned — pull latest
 		cmd := exec.CommandContext(context.Background(), "git", "-C", path, "pull", "--ff-only")
 		out, e := cmd.CombinedOutput()
 		if e != nil {
@@ -137,9 +141,20 @@ func stepCloneRepo() error {
 		}
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
+
+	// Create dir with sudo + chown to current user
+	user := os.Getenv("USER")
+	cmds := []string{
+		"sudo mkdir -p " + path,
+		"sudo chown -R " + user + ":" + user + " /opt/tidefly",
 	}
+	for _, c := range cmds {
+		out, e := exec.CommandContext(context.Background(), "sh", "-c", c).CombinedOutput()
+		if e != nil {
+			return fmt.Errorf("failed to create directory: %s", strings.TrimSpace(string(out)))
+		}
+	}
+
 	cmd := exec.CommandContext(
 		context.Background(),
 		"git", "clone", "https://github.com/tidefly-oss/tidefly-plane.git", path,
@@ -150,7 +165,6 @@ func stepCloneRepo() error {
 	}
 	return nil
 }
-
 func stepGenerateSecrets(cfg SetupConfig, envFile string) error {
 	scriptPath := filepath.Join(env.PlanePath(), "scripts", "init-env.sh")
 	if _, err := os.Stat(envFile); err == nil {
@@ -202,7 +216,7 @@ func stepCreateNetworks(cfg SetupConfig, rt string) error {
 			context.Background(), rt,
 			"network", "create", "--driver", "bridge", "--label", "tidefly.managed=true", network,
 		)
-		cmd.Env = append(os.Environ(), "ENV_TYPE="+cfg.Environment)
+		cmd.Env = append(os.Environ(), envTypePrefix+cfg.Environment)
 		out, e := cmd.CombinedOutput()
 		if e != nil && !strings.Contains(string(out), "already exists") {
 			return fmt.Errorf("failed to create network %s: %s", network, strings.TrimSpace(string(out)))
@@ -212,9 +226,9 @@ func stepCreateNetworks(cfg SetupConfig, rt string) error {
 }
 
 func stepCleanup(cfg SetupConfig, rt, cf, envFile string) error {
-	args := []string{"compose", "-f", cf, "--env-file", envFile, "down", "--remove-orphans"}
+	args := []string{"compose", "-f", cf, flagEnvFile, envFile, "down", "--remove-orphans"}
 	cmd := exec.CommandContext(context.Background(), rt, args...)
-	cmd.Env = append(os.Environ(), "ENV_TYPE="+cfg.Environment)
+	cmd.Env = append(os.Environ(), envTypePrefix+cfg.Environment)
 	out, e := cmd.CombinedOutput()
 	if e != nil &&
 		!strings.Contains(string(out), "no such file") &&
@@ -231,7 +245,7 @@ func stepStartCore(cfg SetupConfig, rt, cf, envFile string) error {
 	if _, err := os.Stat(envFile); err != nil {
 		return fmt.Errorf(".env not found: %s", envFile)
 	}
-	args := []string{"compose", "-f", cf, "--env-file", envFile, "up", "-d", "postgres", "redis", "caddy"}
+	args := []string{"compose", "-f", cf, flagEnvFile, envFile, "up", "-d", "postgres", "redis", "caddy"}
 	cmd := podmanEnv(exec.CommandContext(context.Background(), rt, args...), rt, cfg.SocketPath, cfg.Environment)
 	out, e := cmd.CombinedOutput()
 	if e != nil {
@@ -419,39 +433,52 @@ func writeEnvVars(path string, vars map[string]string) error {
 		}
 	}()
 
-	var lines []string
-	updated := make(map[string]bool)
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		for k, v := range vars {
-			re := regexp.MustCompile(`(?i)^` + regexp.QuoteMeta(k) + `\s*=.*$`)
-			if re.MatchString(line) {
-				line = k + "=" + v
-				updated[k] = true
-				break
-			}
-		}
-		lines = append(lines, line)
-	}
-	if err = scanner.Err(); err != nil {
+	lines, updated, err := readAndUpdateLines(f, vars)
+	if err != nil {
 		return err
 	}
+
 	for k, v := range vars {
 		if !updated[k] {
 			lines = append(lines, k+"="+v)
 		}
 	}
-	if err = f.Truncate(0); err != nil {
+
+	return rewriteFile(f, lines)
+}
+
+func readAndUpdateLines(f *os.File, vars map[string]string) ([]string, map[string]bool, error) {
+	updated := make(map[string]bool)
+	var lines []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := replaceEnvLine(scanner.Text(), vars, updated)
+		lines = append(lines, line)
+	}
+	return lines, updated, scanner.Err()
+}
+
+func replaceEnvLine(line string, vars map[string]string, updated map[string]bool) string {
+	for k, v := range vars {
+		re := regexp.MustCompile(`(?i)^` + regexp.QuoteMeta(k) + `\s*=.*$`)
+		if re.MatchString(line) {
+			updated[k] = true
+			return k + "=" + v
+		}
+	}
+	return line
+}
+
+func rewriteFile(f *os.File, lines []string) error {
+	if err := f.Truncate(0); err != nil {
 		return err
 	}
-	if _, err = f.Seek(0, 0); err != nil {
+	if _, err := f.Seek(0, 0); err != nil {
 		return err
 	}
 	w := bufio.NewWriter(f)
 	for _, l := range lines {
-		if _, err = fmt.Fprintln(w, l); err != nil {
+		if _, err := fmt.Fprintln(w, l); err != nil {
 			return err
 		}
 	}
