@@ -432,39 +432,52 @@ func writeEnvVars(path string, vars map[string]string) error {
 		}
 	}()
 
-	var lines []string
-	updated := make(map[string]bool)
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		for k, v := range vars {
-			re := regexp.MustCompile(`(?i)^` + regexp.QuoteMeta(k) + `\s*=.*$`)
-			if re.MatchString(line) {
-				line = k + "=" + v
-				updated[k] = true
-				break
-			}
-		}
-		lines = append(lines, line)
-	}
-	if err = scanner.Err(); err != nil {
+	lines, updated, err := readAndUpdateLines(f, vars)
+	if err != nil {
 		return err
 	}
+
 	for k, v := range vars {
 		if !updated[k] {
 			lines = append(lines, k+"="+v)
 		}
 	}
-	if err = f.Truncate(0); err != nil {
+
+	return rewriteFile(f, lines)
+}
+
+func readAndUpdateLines(f *os.File, vars map[string]string) ([]string, map[string]bool, error) {
+	updated := make(map[string]bool)
+	var lines []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := replaceEnvLine(scanner.Text(), vars, updated)
+		lines = append(lines, line)
+	}
+	return lines, updated, scanner.Err()
+}
+
+func replaceEnvLine(line string, vars map[string]string, updated map[string]bool) string {
+	for k, v := range vars {
+		re := regexp.MustCompile(`(?i)^` + regexp.QuoteMeta(k) + `\s*=.*$`)
+		if re.MatchString(line) {
+			updated[k] = true
+			return k + "=" + v
+		}
+	}
+	return line
+}
+
+func rewriteFile(f *os.File, lines []string) error {
+	if err := f.Truncate(0); err != nil {
 		return err
 	}
-	if _, err = f.Seek(0, 0); err != nil {
+	if _, err := f.Seek(0, 0); err != nil {
 		return err
 	}
 	w := bufio.NewWriter(f)
 	for _, l := range lines {
-		if _, err = fmt.Fprintln(w, l); err != nil {
+		if _, err := fmt.Fprintln(w, l); err != nil {
 			return err
 		}
 	}
