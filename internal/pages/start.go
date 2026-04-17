@@ -19,6 +19,10 @@ import (
 	"github.com/tidefly-oss/tidefly-tui/internal/env"
 	"github.com/tidefly-oss/tidefly-tui/internal/styles"
 )
+const (
+    flagEnvFile = "--env-file"
+    envTypePrefix = "ENV_TYPE="
+)
 
 type startStepResult struct {
 	step int
@@ -103,9 +107,9 @@ func (m *StartModel) rollback() tea.Cmd {
 		if _, err := os.Stat(envFile); err != nil {
 			return rollbackDone{}
 		}
-		args := []string{"compose", "-f", cf, "--env-file", envFile, "down", "--remove-orphans", "--volumes"}
+		args := []string{"compose", "-f", cf, flagEnvFile, envFile, "down", "--remove-orphans", "--volumes"}
 		cmd := exec.CommandContext(context.Background(), rt, args...)
-		cmd.Env = append(os.Environ(), "ENV_TYPE="+m.cfg.Environment)
+		cmd.Env = append(os.Environ(), envTypePrefix+m.cfg.Environment)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			return rollbackDone{err: fmt.Errorf("rollback failed: %s", strings.TrimSpace(string(out)))}
@@ -202,7 +206,7 @@ func stepCreateNetworks(cfg SetupConfig, rt string) error {
 			context.Background(), rt,
 			"network", "create", "--driver", "bridge", "--label", "tidefly.managed=true", network,
 		)
-		cmd.Env = append(os.Environ(), "ENV_TYPE="+cfg.Environment)
+		cmd.Env = append(os.Environ(), envTypePrefix+cfg.Environment)
 		out, e := cmd.CombinedOutput()
 		if e != nil && !strings.Contains(string(out), "already exists") {
 			return fmt.Errorf("failed to create network %s: %s", network, strings.TrimSpace(string(out)))
@@ -212,9 +216,9 @@ func stepCreateNetworks(cfg SetupConfig, rt string) error {
 }
 
 func stepCleanup(cfg SetupConfig, rt, cf, envFile string) error {
-	args := []string{"compose", "-f", cf, "--env-file", envFile, "down", "--remove-orphans"}
+	args := []string{"compose", "-f", cf, flagEnvFile, envFile, "down", "--remove-orphans"}
 	cmd := exec.CommandContext(context.Background(), rt, args...)
-	cmd.Env = append(os.Environ(), "ENV_TYPE="+cfg.Environment)
+	cmd.Env = append(os.Environ(), envTypePrefix+cfg.Environment)
 	out, e := cmd.CombinedOutput()
 	if e != nil &&
 		!strings.Contains(string(out), "no such file") &&
@@ -231,7 +235,7 @@ func stepStartCore(cfg SetupConfig, rt, cf, envFile string) error {
 	if _, err := os.Stat(envFile); err != nil {
 		return fmt.Errorf(".env not found: %s", envFile)
 	}
-	args := []string{"compose", "-f", cf, "--env-file", envFile, "up", "-d", "postgres", "redis", "caddy"}
+	args := []string{"compose", "-f", cf, flagEnvFile, envFile, "up", "-d", "postgres", "redis", "caddy"}
 	cmd := podmanEnv(exec.CommandContext(context.Background(), rt, args...), rt, cfg.SocketPath, cfg.Environment)
 	out, e := cmd.CombinedOutput()
 	if e != nil {
