@@ -57,6 +57,7 @@ func buildSteps(cfg SetupConfig) []startStep {
 		backendLabel = "Starting backend + dashboard"
 	}
 	return []startStep{
+		{label: "Cloning tidefly-plane repository"},
 		{label: "Generating secrets"},
 		{label: "Writing environment config"},
 		{label: "Creating Docker networks"},
@@ -180,6 +181,30 @@ func stepCreateNetworks(cfg SetupConfig, rt string) error {
 	return nil
 }
 
+func stepCloneRepo() error {
+	path := env.PlanePath()
+	if _, err := os.Stat(filepath.Join(path, ".git")); err == nil {
+		cmd := exec.CommandContext(context.Background(), "git", "-C", path, "pull", "--ff-only")
+		out, e := cmd.CombinedOutput()
+		if e != nil {
+			return fmt.Errorf("git pull failed: %s", strings.TrimSpace(string(out)))
+		}
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+	cmd := exec.CommandContext(
+		context.Background(),
+		"git", "clone", "https://github.com/tidefly-oss/tidefly-plane.git", path,
+	)
+	out, e := cmd.CombinedOutput()
+	if e != nil {
+		return fmt.Errorf("git clone failed: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
 func stepCleanup(cfg SetupConfig, rt, cf, envFile string) error {
 	args := []string{"compose", "-f", cf, "--env-file", envFile, "down", "--remove-orphans"}
 	cmd := exec.CommandContext(context.Background(), rt, args...)
@@ -267,6 +292,8 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 	return func() tea.Msg {
 		var err error
 		switch {
+		case strings.HasPrefix(label, "Cloning"):
+			err = stepCloneRepo()
 		case strings.HasPrefix(label, "Generating"):
 			err = stepGenerateSecrets(cfg, envFile)
 		case strings.HasPrefix(label, "Writing"):
