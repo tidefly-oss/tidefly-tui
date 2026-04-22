@@ -50,5 +50,7 @@ Use [GitHub Private Security Advisories](https://github.com/tidefly-oss/tidefly-
 ---
 
 <div align="center">
-  <sub>Built with ❤️ by <a href="https://github.com/dbuettgen">@dbuettgen</a> · Part of the <a href="https://github.com/tidefly-oss">tidefly-oss</a> project</sub>
+
+Built with ❤️ · [AGPLv3](https://github.com/tidefly-oss/tidefly-tui/blob/main/LICENSE) · [Report a vulnerability](https://github.com/tidefly-oss/tidefly-tui/security/advisories/new)
+
 </div>
