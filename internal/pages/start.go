@@ -167,7 +167,7 @@ func stepWriteEnv(cfg SetupConfig, rt, envFile string) error {
 	return writeEnvVars(envFile, vars)
 }
 
-func stepCreateNetworks(cfg SetupConfig, rt string) error {
+func stepCreateNetworks(_ SetupConfig, rt string) error {
 	for _, network := range []string{"tidefly_proxy", "tidefly_internal"} {
 		cmd := exec.CommandContext(
 			context.Background(), rt,
