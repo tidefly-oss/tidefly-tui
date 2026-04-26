@@ -62,7 +62,7 @@ func buildSteps(cfg SetupConfig) []startStep {
 		backendLabel = "Starting backend + dashboard"
 	}
 	return []startStep{
-		{label: "Cloning tidefly-plane repository"},
+		{label: "Pulling Docker images"},
 		{label: "Generating secrets"},
 		{label: "Writing environment config"},
 		{label: "Creating Docker networks"},
@@ -86,13 +86,13 @@ func (m *StartModel) Init() tea.Cmd {
 
 func (m *StartModel) composePaths() (cf, envFile string) {
 	isProd := m.cfg.Environment == EnvProduction
-	deployPath := filepath.Join(env.PlanePath(), "deploy")
+	baseDir := env.PlaneDir()
 	if isProd {
-		cf = filepath.Join(deployPath, "production", "docker-compose.yaml")
-		envFile = filepath.Join(deployPath, "production", ".env")
+		cf = filepath.Join(baseDir, "docker-compose.yaml")
+		envFile = filepath.Join(baseDir, ".env")
 	} else {
-		cf = filepath.Join(deployPath, "development", "docker-compose.yaml")
-		envFile = filepath.Join(deployPath, "development", ".env")
+		cf = filepath.Join(baseDir, "docker-compose.dev.yaml")
+		envFile = filepath.Join(baseDir, ".env.dev")
 	}
 	return
 }
@@ -104,7 +104,6 @@ func (m *StartModel) rollback() tea.Cmd {
 		rt = "docker"
 	}
 	return func() tea.Msg {
-		// Only rollback if envFile exists — if clone failed there's nothing to roll back
 		if _, err := os.Stat(envFile); err != nil {
 			return rollbackDone{}
 		}
@@ -131,53 +130,49 @@ func podmanEnv(cmd *exec.Cmd, rt, socketPath, environment string) *exec.Cmd {
 	return cmd
 }
 
-func stepCloneRepo() error {
-	path := env.PlanePath()
-	if _, err := os.Stat(filepath.Join(path, ".git")); err == nil {
-		cmd := exec.CommandContext(context.Background(), "git", "-C", path, "pull", "--ff-only")
+func stepPullImages(cfg SetupConfig, rt string) error {
+	images := []string{
+		"tidefly/tidefly-plane:latest",
+		"tidefly/tidefly-caddy:latest",
+		"postgres:17-alpine",
+		"redis:8-alpine",
+	}
+	if cfg.WithDashboard {
+		images = append(images, "tidefly/tidefly-ui:latest")
+	}
+	for _, img := range images {
+		cmd := exec.CommandContext(context.Background(), rt, "pull", img)
 		out, e := cmd.CombinedOutput()
 		if e != nil {
-			return fmt.Errorf("git pull failed: %s", strings.TrimSpace(string(out)))
+			return fmt.Errorf("failed to pull %s: %s", img, strings.TrimSpace(string(out)))
 		}
-		return nil
-	}
-
-	// Create dir with sudo + chown to current user
-	user := os.Getenv("USER")
-	cmds := []string{
-		"sudo mkdir -p " + path,
-		"sudo chown -R " + user + ":" + user + " /opt/tidefly",
-	}
-	for _, c := range cmds {
-		out, e := exec.CommandContext(context.Background(), "sh", "-c", c).CombinedOutput()
-		if e != nil {
-			return fmt.Errorf("failed to create directory: %s", strings.TrimSpace(string(out)))
-		}
-	}
-
-	cmd := exec.CommandContext(
-		context.Background(),
-		"git", "clone", "https://github.com/tidefly-oss/tidefly-plane.git", path,
-	)
-	out, e := cmd.CombinedOutput()
-	if e != nil {
-		return fmt.Errorf("git clone failed: %s", strings.TrimSpace(string(out)))
 	}
 	return nil
 }
+
 func stepGenerateSecrets(cfg SetupConfig, envFile string) error {
-	scriptPath := filepath.Join(env.PlanePath(), "scripts", "init-env.sh")
 	if _, err := os.Stat(envFile); err == nil {
 		return nil
 	}
-	if _, err := os.Stat(scriptPath); err != nil {
-		return fmt.Errorf("init-env.sh not found at %s", scriptPath)
+
+	dir := filepath.Dir(envFile)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return fmt.Errorf("failed to create config dir: %w", err)
 	}
-	cmd := exec.CommandContext(context.Background(), "bash", scriptPath)
-	cmd.Env = append(os.Environ(), "ENV_TYPE="+cfg.Environment)
-	out, err := cmd.CombinedOutput()
+
+	f, err := os.OpenFile(envFile, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
 	if err != nil {
-		return fmt.Errorf("secret generation failed: %s", strings.TrimSpace(string(out)))
+		return fmt.Errorf("failed to create env file: %w", err)
+	}
+	defer f.Close()
+
+	secrets, err := generateSecrets()
+	if err != nil {
+		return err
+	}
+
+	if _, err := fmt.Fprint(f, secrets); err != nil {
+		return fmt.Errorf("failed to write secrets: %w", err)
 	}
 	return nil
 }
@@ -303,8 +298,8 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 	return func() tea.Msg {
 		var err error
 		switch {
-		case strings.HasPrefix(label, "Cloning"):
-			err = stepCloneRepo()
+		case strings.HasPrefix(label, "Pulling"):
+			err = stepPullImages(cfg, rt)
 		case strings.HasPrefix(label, "Generating"):
 			err = stepGenerateSecrets(cfg, envFile)
 		case strings.HasPrefix(label, "Writing"):

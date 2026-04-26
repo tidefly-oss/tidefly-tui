@@ -7,19 +7,23 @@ import (
 	"strings"
 )
 
-func PlanePath() string {
-	if p := os.Getenv("TIDEFLY_PLANE_PATH"); p != "" {
+// PlaneDir returns the directory where tidefly-plane config lives.
+// Matches TIDEFLY_DIR in install.sh (default: /etc/tidefly-plane)
+func PlaneDir() string {
+	if p := os.Getenv("TIDEFLY_DIR"); p != "" {
 		return p
 	}
-	return "/opt/tidefly/plane"
+	return "/etc/tidefly-plane"
+}
+
+// PlanePath is kept for backwards compatibility.
+// Deprecated: use PlaneDir instead.
+func PlanePath() string {
+	return PlaneDir()
 }
 
 func Load(extraPaths ...string) error {
-	envType := os.Getenv("ENV_CHOICE")
-	if envType == "" {
-		envType = "development"
-	}
-	candidates := buildCandidates(envType, extraPaths...)
+	candidates := buildCandidates(extraPaths...)
 	for _, p := range candidates {
 		if err := loadFile(p); err == nil {
 			return nil
@@ -36,12 +40,11 @@ func GetOrLoad(key string) string {
 	return os.Getenv(key)
 }
 
-func buildCandidates(envType string, extra ...string) []string {
-	plane := PlanePath()
+func buildCandidates(extra ...string) []string {
+	dir := PlaneDir()
 	var paths []string
 	paths = append(paths, extra...)
-	paths = append(paths, filepath.Join(plane, "deploy", envType, ".env"))
-	paths = append(paths, filepath.Join(plane, ".env"))
+	paths = append(paths, filepath.Join(dir, ".env"))
 	return paths
 }
 
