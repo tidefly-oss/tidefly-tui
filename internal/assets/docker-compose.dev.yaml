@@ -27,8 +27,11 @@ volumes:
     name: tidefly_caddy_data
 
 services:
+  # -----------------------------
+  # Caddy Reverse Proxy
+  # -----------------------------
   caddy:
-    image: ghcr.io/tidefly-oss/tidefly-caddy:0.0.1
+    image: ghcr.io/tidefly-oss/tidefly-caddy:latest
     container_name: tidefly_caddy
     labels:
       tidefly.internal: "true"
@@ -45,7 +48,7 @@ services:
       - CADDY_ADMIN=0.0.0.0:2019
     command: caddy run --resume
     healthcheck:
-      test: [ "CMD", "wget", "-qO-", "http://localhost:2019/config/" ]
+      test: ["CMD", "wget", "-qO-", "http://localhost:2019/config/"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -61,7 +64,7 @@ services:
       tidefly.internal: "true"
     restart: unless-stopped
     env_file:
-      - ./.env
+      - ./.env.dev
     volumes:
       - postgres_data:/var/lib/postgresql
     networks:
@@ -69,7 +72,11 @@ services:
     ports:
       - "${POSTGRES_PORT:-15432}:5432"
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tidefly-plane} -d ${POSTGRES_DB:-tidefly-plane}" ]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-tidefly} -d ${POSTGRES_DB:-tidefly}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -84,9 +91,9 @@ services:
     labels:
       tidefly.internal: "true"
     restart: unless-stopped
-    command: [ "redis-server", "/usr/local/etc/redis/redis.conf" ]
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     env_file:
-      - ./.env
+      - ./.env.dev
     volumes:
       - redis_data:/data
       - ./redis:/usr/local/etc/redis
@@ -95,7 +102,16 @@ services:
     ports:
       - "${REDIS_PORT:-16379}:6379"
     healthcheck:
-      test: [ "CMD", "redis-cli", "--user", "tidefly-plane", "--pass", "${REDIS_PASSWORD}", "ping" ]
+      test:
+        [
+          "CMD",
+          "redis-cli",
+          "--user",
+          "tidefly",
+          "--pass",
+          "${REDIS_PASSWORD}",
+          "ping",
+        ]
       interval: 5s
       timeout: 3s
       retries: 5

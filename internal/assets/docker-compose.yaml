@@ -1,23 +1,35 @@
 networks:
   tidefly_internal:
+    name: tidefly_internal
     driver: bridge
     labels:
       tidefly.internal: "true"
-      external: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
   tidefly_proxy:
-    external: true
+    name: tidefly_proxy
+    driver: bridge
+    labels:
+      tidefly.internal: "true"
+    ipam:
+      config:
+        - subnet: 172.31.0.0/16
 
 volumes:
   postgres_data:
+    name: tidefly_postgres_data
   redis_data:
+    name: tidefly_redis_data
   caddy_data:
+    name: tidefly_caddy_data
 
 services:
   # -----------------------------
   # Caddy Reverse Proxy
   # -----------------------------
   caddy:
-    image: ghcr.io/tidefly-oss/tidefly-caddy:0.0.1
+    image: ghcr.io/tidefly-oss/tidefly-caddy:latest
     container_name: tidefly_caddy
     labels:
       tidefly.internal: "true"
@@ -51,8 +63,12 @@ services:
     restart: unless-stopped
     env_file:
       - ./.env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /etc/tidefly-plane/templates:/etc/tidefly-plane/templates
     networks:
       - tidefly_internal
+      - tidefly_proxy
     depends_on:
       postgres:
         condition: service_healthy
@@ -98,7 +114,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "pg_isready -U ${POSTGRES_USER:-tidefly-plane} -d ${POSTGRES_DB:-tidefly-plane}",
+          "pg_isready -U ${POSTGRES_USER:-tidefly} -d ${POSTGRES_DB:-tidefly}",
         ]
       interval: 5s
       timeout: 5s
@@ -128,7 +144,7 @@ services:
           "CMD",
           "redis-cli",
           "--user",
-          "tidefly-plane",
+          "tidefly",
           "--pass",
           "${REDIS_PASSWORD}",
           "ping",
