@@ -16,6 +16,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/tidefly-oss/tidefly-tui/internal/assets"
 	"github.com/tidefly-oss/tidefly-tui/internal/env"
 	"github.com/tidefly-oss/tidefly-tui/internal/styles"
 )
@@ -65,6 +66,7 @@ func buildSteps(cfg SetupConfig) []startStep {
 	return []startStep{
 		{label: "Pulling Docker images"},
 		{label: "Generating secrets"},
+		{label: "Writing assets"},
 		{label: "Writing environment config"},
 		{label: "Creating Docker networks"},
 		{label: "Cleaning up existing containers"},
@@ -133,13 +135,13 @@ func podmanEnv(cmd *exec.Cmd, rt, socketPath, environment string) *exec.Cmd {
 
 func stepPullImages(cfg SetupConfig, rt string) error {
 	images := []string{
-		"tidefly/tidefly-plane:latest",
-		"tidefly/tidefly-caddy:latest",
-		"postgres:17-alpine",
+		"ghcr.io/tidefly-oss/tidefly-plane:latest",
+		"ghcr.io/tidefly-oss/tidefly-caddy:latest",
+		"postgres:18-alpine",
 		"redis:8-alpine",
 	}
 	if cfg.WithDashboard {
-		images = append(images, "tidefly/tidefly-ui:latest")
+		images = append(images, "ghcr.io/tidefly-oss/tidefly-ui:latest")
 	}
 	for _, img := range images {
 		cmd := exec.CommandContext(context.Background(), rt, "pull", img)
@@ -179,6 +181,60 @@ func stepGenerateSecrets(_ SetupConfig, envFile string) (err error) {
 	if _, err := fmt.Fprint(f, secrets); err != nil {
 		return fmt.Errorf("failed to write secrets: %w", err)
 	}
+	return nil
+}
+
+func stepWriteAssets(cfg SetupConfig, envFile string) error {
+	baseDir := env.PlaneDir()
+
+	if err := os.MkdirAll(baseDir, 0o750); err != nil {
+		return fmt.Errorf("failed to create config dir: %w", err)
+	}
+
+	// Compose file
+	var composeData []byte
+	var composeName string
+	if cfg.Environment == EnvProduction {
+		composeData = assets.ComposeProduction
+		composeName = "docker-compose.yaml"
+	} else {
+		composeData = assets.ComposeDev
+		composeName = "docker-compose.dev.yaml"
+	}
+	cf := filepath.Join(baseDir, composeName)
+	if err := os.WriteFile(cf, composeData, 0o640); err != nil {
+		return fmt.Errorf("failed to write compose file: %w", err)
+	}
+
+	// Redis conf
+	redisDir := filepath.Join(baseDir, "redis")
+	if err := os.MkdirAll(redisDir, 0o750); err != nil {
+		return fmt.Errorf("failed to create redis dir: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(redisDir, "redis.conf"), assets.RedisConf, 0o640); err != nil {
+		return fmt.Errorf("failed to write redis.conf: %w", err)
+	}
+
+	// Redis ACL — Passwort aus envFile lesen
+	redisPass := ""
+	data, err := os.ReadFile(envFile)
+	if err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if strings.HasPrefix(line, "REDIS_PASSWORD=") {
+				redisPass = strings.TrimPrefix(line, "REDIS_PASSWORD=")
+				break
+			}
+		}
+	}
+	if redisPass == "" {
+		return fmt.Errorf("REDIS_PASSWORD not found in %s", envFile)
+	}
+
+	acl := fmt.Sprintf("user default off\nuser tidefly on >%s ~* &* +@all\n", redisPass)
+	if err := os.WriteFile(filepath.Join(redisDir, "users.acl"), []byte(acl), 0o600); err != nil {
+		return fmt.Errorf("failed to write users.acl: %w", err)
+	}
+
 	return nil
 }
 
@@ -307,7 +363,9 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 			err = stepPullImages(cfg, rt)
 		case strings.HasPrefix(label, "Generating"):
 			err = stepGenerateSecrets(cfg, envFile)
-		case strings.HasPrefix(label, "Writing"):
+		case strings.HasPrefix(label, "Writing assets"):
+			err = stepWriteAssets(cfg, envFile)
+		case strings.HasPrefix(label, "Writing environment"):
 			err = stepWriteEnv(cfg, rt, envFile)
 		case strings.HasPrefix(label, "Creating Docker networks"):
 			err = stepCreateNetworks(cfg, rt)
