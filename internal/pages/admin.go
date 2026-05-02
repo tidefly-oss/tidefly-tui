@@ -19,6 +19,8 @@ import (
 	"gorm.io/gorm"
 )
 
+const labelPassword = "Password"
+
 // hashPassword hashes a password using Argon2id (OWASP 2024 params).
 // Kept inline — TUI is a separate Go module from the backend.
 func hashPassword(password string) (string, error) {
@@ -47,7 +49,7 @@ const (
 	fieldCount
 )
 
-var adminLabels = [fieldCount]string{"First name", "Last name", "Email", "Password"}
+var adminLabels = [fieldCount]string{"First name", "Last name", "Email", labelPassword}
 
 type AdminCreated struct{}
 type AdminError struct{ Msg string }

@@ -17,6 +17,7 @@ func PlaneDir() string {
 }
 
 // PlanePath is kept for backwards compatibility.
+//
 // Deprecated: use PlaneDir instead.
 func PlanePath() string {
 	return PlaneDir()

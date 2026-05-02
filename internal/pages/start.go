@@ -23,6 +23,7 @@ import (
 const (
 	flagEnvFile   = "--env-file"
 	envTypePrefix = "ENV_TYPE="
+	cmdCompose    = "compose"
 )
 
 type startStepResult struct {
@@ -107,7 +108,7 @@ func (m *StartModel) rollback() tea.Cmd {
 		if _, err := os.Stat(envFile); err != nil {
 			return rollbackDone{}
 		}
-		args := []string{"compose", "-f", cf, flagEnvFile, envFile, "down", "--remove-orphans", "--volumes"}
+		args := []string{cmdCompose, "-f", cf, flagEnvFile, envFile, "down", "--remove-orphans", "--volumes"}
 		cmd := exec.CommandContext(context.Background(), rt, args...)
 		cmd.Env = append(os.Environ(), envTypePrefix+m.cfg.Environment)
 		out, err := cmd.CombinedOutput()
@@ -150,7 +151,7 @@ func stepPullImages(cfg SetupConfig, rt string) error {
 	return nil
 }
 
-func stepGenerateSecrets(cfg SetupConfig, envFile string) error {
+func stepGenerateSecrets(_ SetupConfig, envFile string) (err error) {
 	if _, err := os.Stat(envFile); err == nil {
 		return nil
 	}
@@ -164,7 +165,11 @@ func stepGenerateSecrets(cfg SetupConfig, envFile string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create env file: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
 
 	secrets, err := generateSecrets()
 	if err != nil {
@@ -221,7 +226,7 @@ func stepCreateNetworks(cfg SetupConfig, rt string) error {
 }
 
 func stepCleanup(cfg SetupConfig, rt, cf, envFile string) error {
-	args := []string{"compose", "-f", cf, flagEnvFile, envFile, "down", "--remove-orphans"}
+	args := []string{cmdCompose, "-f", cf, flagEnvFile, envFile, "down", "--remove-orphans"}
 	cmd := exec.CommandContext(context.Background(), rt, args...)
 	cmd.Env = append(os.Environ(), envTypePrefix+cfg.Environment)
 	out, e := cmd.CombinedOutput()
@@ -240,7 +245,7 @@ func stepStartCore(cfg SetupConfig, rt, cf, envFile string) error {
 	if _, err := os.Stat(envFile); err != nil {
 		return fmt.Errorf(".env not found: %s", envFile)
 	}
-	args := []string{"compose", "-f", cf, flagEnvFile, envFile, "up", "-d", "postgres", "redis", "caddy"}
+	args := []string{cmdCompose, "-f", cf, flagEnvFile, envFile, "up", "-d", "postgres", "redis", "caddy"}
 	cmd := podmanEnv(exec.CommandContext(context.Background(), rt, args...), rt, cfg.SocketPath, cfg.Environment)
 	out, e := cmd.CombinedOutput()
 	if e != nil {
@@ -267,11 +272,11 @@ func stepStartBackend(cfg SetupConfig, rt, cf, envFile string) error {
 	var args []string
 	if cfg.WithDashboard {
 		args = []string{
-			"compose", "-f", cf, flagEnvFile, envFile,
+			cmdCompose, "-f", cf, flagEnvFile, envFile,
 			"--profile", "dashboard", "up", "-d", "backend", "ui",
 		}
 	} else {
-		args = []string{"compose", "-f", cf, flagEnvFile, envFile, "up", "-d", "backend"}
+		args = []string{cmdCompose, "-f", cf, flagEnvFile, envFile, "up", "-d", "backend"}
 	}
 	cmd := podmanEnv(exec.CommandContext(context.Background(), rt, args...), rt, cfg.SocketPath, cfg.Environment)
 	out, e := cmd.CombinedOutput()

@@ -191,7 +191,7 @@ func (m *SMTPModel) View() string {
 
 	case 1:
 		labels := [smtpFieldCount]string{
-			"SMTP Host", "Port", "Username", "Password", "From address",
+			"SMTP Host", "Port", "Username", labelPassword, "From address",
 		}
 		header := lipgloss.JoinVertical(
 			lipgloss.Left,
