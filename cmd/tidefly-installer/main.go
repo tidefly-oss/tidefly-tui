@@ -8,7 +8,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/tidefly-oss/tidefly-tui/internal/env"
 	"github.com/tidefly-oss/tidefly-tui/internal/pages"
 	"github.com/tidefly-oss/tidefly-tui/internal/styles"
 )
@@ -139,13 +138,15 @@ func mergeConfig(dst *pages.SetupConfig, src pages.SetupConfig) {
 }
 
 func main() {
-	_ = env.Load()
+	if os.Getuid() != 0 {
+		fmt.Fprintln(os.Stderr, "error: tidefly-tui must be run as root: sudo tidefly-tui")
+		os.Exit(1)
+	}
 
 	p := tea.NewProgram(
 		NewApp(),
 		tea.WithAltScreen(),
 	)
-
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
