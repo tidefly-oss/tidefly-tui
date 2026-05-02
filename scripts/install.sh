@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO="tidefly-oss/tidefly-tui"
-INSTALL_DIR="/usr/local/bin"
+INSTALL_DIR="${HOME}/.local/bin"
 BINARY="tidefly-tui"
 
 RED='\033[0;31m'
