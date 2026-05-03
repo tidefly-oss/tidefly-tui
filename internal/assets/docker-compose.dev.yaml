@@ -16,7 +16,7 @@ volumes:
 
 services:
   caddy:
-    image: ghcr.io/tidefly-oss/tidefly-caddy:latest
+    image: tidefly/tidefly-caddy:latest
     container_name: tidefly_caddy_dev
     labels:
       tidefly.internal: "true"
@@ -39,7 +39,7 @@ services:
       start_period: 5s
 
   backend:
-    image: ghcr.io/tidefly-oss/tidefly-plane:latest
+    image: tidefly/tidefly-plane:latest
     container_name: tidefly_backend_dev
     labels:
       tidefly.internal: "true"
@@ -63,7 +63,7 @@ services:
         condition: service_healthy
 
   ui:
-    image: ghcr.io/tidefly-oss/tidefly-ui:latest
+    image: tidefly/tidefly-ui:latest
     container_name: tidefly_ui_dev
     labels:
       tidefly.internal: "true"
