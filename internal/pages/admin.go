@@ -2,40 +2,18 @@ package pages
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/google/uuid"
-	"github.com/tidefly-oss/tidefly-tui/internal/env"
 	"github.com/tidefly-oss/tidefly-tui/internal/styles"
-	"golang.org/x/crypto/argon2"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 )
 
 const labelPassword = "Password"
-
-// hashPassword hashes a password using Argon2id (OWASP 2024 params).
-// Kept inline — TUI is a separate Go module from the backend.
-func hashPassword(password string) (string, error) {
-	salt := make([]byte, 16)
-	if _, err := rand.Read(salt); err != nil {
-		return "", fmt.Errorf("generating salt: %w", err)
-	}
-	hash := argon2.IDKey([]byte(password), salt, 3, 64*1024, 2, 32)
-	return fmt.Sprintf(
-		"$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
-		argon2.Version, 64*1024, 3, 2,
-		base64.RawStdEncoding.EncodeToString(salt),
-		base64.RawStdEncoding.EncodeToString(hash),
-	), nil
-}
 
 // ── Admin page ────────────────────────────────────────────────────────────────
 
@@ -150,51 +128,33 @@ func submitAdmin(inputs [fieldCount]textinput.Model) tea.Cmd {
 			return AdminError{"invalid email address"}
 		}
 
-		dbURL := env.GetOrLoad("DATABASE_URL")
-		if dbURL == "" {
-			return AdminError{"DATABASE_URL not set — is infrastructure running?"}
-		}
+		body := fmt.Sprintf(
+			`{"first_name":%q,"last_name":%q,"email":%q,"password":%q}`,
+			firstName, lastName, email, password,
+		)
 
-		db, err := gorm.Open(postgres.Open(dbURL), &gorm.Config{})
+		ctx := context.Background()
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost:8181/api/v1/setup/admin", strings.NewReader(body))
 		if err != nil {
-			return AdminError{fmt.Sprintf("database connection failed: %v", err)}
+			return AdminError{fmt.Sprintf("failed to create request: %v", err)}
 		}
+		req.Header.Set("Content-Type", "application/json")
 
-		hash, err := hashPassword(password)
+		client := &http.Client{}
+		resp, err := client.Do(req)
 		if err != nil {
-			return AdminError{fmt.Sprintf("password hashing failed: %v", err)}
+			return AdminError{fmt.Sprintf("failed to connect to backend: %v", err)}
 		}
+		defer func() { _ = resp.Body.Close() }()
 
-		type User struct {
-			ID       string
-			Email    string
-			Password string
-			Name     string
-			Role     string
-			Active   bool
+		switch resp.StatusCode {
+		case http.StatusOK, http.StatusCreated:
+			return AdminCreated{}
+		case http.StatusConflict:
+			return AdminError{"setup already completed — a user already exists"}
+		default:
+			return AdminError{fmt.Sprintf("backend error: %s", resp.Status)}
 		}
-
-		var count int64
-		db.WithContext(context.Background()).
-			Table("users").Where("email = ?", email).Count(&count)
-		if count > 0 {
-			return AdminError{"a user with this email already exists"}
-		}
-
-		if err := db.WithContext(context.Background()).Table("users").Create(
-			&User{
-				ID:       uuid.New().String(),
-				Email:    email,
-				Password: hash,
-				Name:     firstName + " " + lastName,
-				Role:     "admin",
-				Active:   true,
-			},
-		).Error; err != nil {
-			return AdminError{fmt.Sprintf("failed to create user: %v", err)}
-		}
-
-		return AdminCreated{}
 	}
 }
 
@@ -206,14 +166,14 @@ func (m *AdminModel) View() string {
 		"",
 	)
 
-	form := ""
+	var form strings.Builder
 	for i, input := range m.inputs {
 		lbl := styles.InputLabel
 		if adminField(i) == m.focused {
 			lbl = lbl.Foreground(styles.Primary)
 		}
-		form += lbl.Render(adminLabels[i]) + "\n"
-		form += input.View() + "\n\n"
+		form.WriteString(lbl.Render(adminLabels[i]) + "\n")
+		form.WriteString(input.View() + "\n\n")
 	}
 
 	errMsg := ""
@@ -231,7 +191,7 @@ func (m *AdminModel) View() string {
 	return styles.Frame(
 		termWidth, termHeight, lipgloss.JoinVertical(
 			lipgloss.Left,
-			header, form, errMsg, loading, help,
+			header, form.String(), errMsg, loading, help,
 		),
 	)
 }
