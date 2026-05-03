@@ -134,13 +134,13 @@ func podmanEnv(cmd *exec.Cmd, rt, socketPath, environment string) *exec.Cmd {
 
 func stepPullImages(cfg SetupConfig, rt string) error {
 	images := []string{
-		"ghcr.io/tidefly-oss/tidefly-plane:latest",
-		"ghcr.io/tidefly-oss/tidefly-caddy:latest",
+		"tidefly/tidefly-plane:latest",
+		"tidefly/tidefly-caddy:latest",
 		"postgres:18-alpine",
 		"redis:8-alpine",
 	}
 	if cfg.WithDashboard {
-		images = append(images, "ghcr.io/tidefly-oss/tidefly-ui:latest")
+		images = append(images, "tidefly/tidefly-ui:latest")
 	}
 	for _, img := range images {
 		cmd := exec.CommandContext(context.Background(), rt, "pull", img)
@@ -377,8 +377,6 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 				container = "tidefly_redis_dev"
 			}
 			err = stepWaitHealthy(rt, container, 30*time.Second)
-		case strings.HasPrefix(label, "Waiting for Redis"):
-			err = stepWaitHealthy(rt, "tidefly_redis", 30*time.Second)
 		case strings.HasPrefix(label, "Starting backend"):
 			err = stepStartBackend(cfg, rt, cf, envFile)
 		}
