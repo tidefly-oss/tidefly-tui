@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -137,6 +138,7 @@ func mergeConfig(dst *pages.SetupConfig, src pages.SetupConfig) {
 
 func runUninstall() {
 	baseDir := env.PlaneDir()
+	ctx := context.Background() // context.Background() importieren
 
 	rt := "docker"
 	if _, err := exec.LookPath("docker"); err != nil {
@@ -150,9 +152,8 @@ func runUninstall() {
 
 	logInfo("Stopping and removing containers...")
 
-	// UI Container explizit killen da er per profile läuft und ggf. nicht von compose down erfasst wird
 	for _, name := range []string{"tidefly_ui", "tidefly_ui_dev"} {
-		_ = exec.Command(rt, "rm", "-f", name).Run()
+		_ = exec.CommandContext(ctx, rt, "rm", "-f", name).Run()
 	}
 
 	for _, cf := range []string{
@@ -160,7 +161,7 @@ func runUninstall() {
 		filepath.Join(baseDir, "docker-compose.dev.yaml"),
 	} {
 		if _, err := os.Stat(cf); err == nil {
-			cmd := exec.Command(rt, "compose", "-f", cf, "down", "--remove-orphans", "--volumes")
+			cmd := exec.CommandContext(ctx, rt, "compose", "-f", cf, "down", "--remove-orphans", "--volumes")
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			_ = cmd.Run()
@@ -172,7 +173,7 @@ func runUninstall() {
 		"tidefly_internal", "tidefly_proxy",
 		"tidefly_internal_dev", "tidefly_proxy_dev",
 	} {
-		_ = exec.Command(rt, "network", "rm", network).Run()
+		_ = exec.CommandContext(ctx, rt, "network", "rm", network).Run()
 	}
 
 	logInfo("Removing config directory...")
