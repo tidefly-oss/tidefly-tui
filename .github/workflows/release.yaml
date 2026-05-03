@@ -32,14 +32,10 @@ jobs:
         include:
           - goos: linux
             goarch: amd64
-          - goos: linux
-            goarch: arm64
           - goos: darwin
             goarch: amd64
           - goos: darwin
             goarch: arm64
-          - goos: windows
-            goarch: amd64
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6

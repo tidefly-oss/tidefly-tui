@@ -366,7 +366,17 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 		case strings.HasPrefix(label, "Starting core"):
 			err = stepStartCore(cfg, rt, cf, envFile)
 		case strings.HasPrefix(label, "Waiting for Postgres"):
-			err = stepWaitHealthy(rt, "tidefly_postgres", 90*time.Second)
+			container := "tidefly_postgres"
+			if cfg.Environment != EnvProduction {
+				container = "tidefly_postgres_dev"
+			}
+			err = stepWaitHealthy(rt, container, 90*time.Second)
+		case strings.HasPrefix(label, "Waiting for Redis"):
+			container := "tidefly_redis"
+			if cfg.Environment != EnvProduction {
+				container = "tidefly_redis_dev"
+			}
+			err = stepWaitHealthy(rt, container, 30*time.Second)
 		case strings.HasPrefix(label, "Waiting for Redis"):
 			err = stepWaitHealthy(rt, "tidefly_redis", 30*time.Second)
 		case strings.HasPrefix(label, "Starting backend"):
