@@ -68,7 +68,6 @@ func buildSteps(cfg SetupConfig) []startStep {
 		{label: "Generating secrets"},
 		{label: "Writing assets"},
 		{label: "Writing environment config"},
-		{label: "Creating Docker networks"},
 		{label: "Cleaning up existing containers"},
 		{label: "Starting core services (Postgres, Redis, Caddy)"},
 		{label: "Waiting for Postgres to be healthy"},
@@ -173,14 +172,11 @@ func stepGenerateSecrets(_ SetupConfig, envFile string) (err error) {
 		}
 	}()
 
-	secrets, err := generateSecrets()
-	if err != nil {
-		return err
+	// Basis: .env.example als Template
+	if _, err := f.Write(assets.EnvExample); err != nil {
+		return fmt.Errorf("failed to write env template: %w", err)
 	}
 
-	if _, err := fmt.Fprint(f, secrets); err != nil {
-		return fmt.Errorf("failed to write secrets: %w", err)
-	}
 	return nil
 }
 
@@ -211,7 +207,7 @@ func stepWriteAssets(cfg SetupConfig, envFile string) error {
 	if err := os.MkdirAll(redisDir, 0o750); err != nil {
 		return fmt.Errorf("failed to create redis dir: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(redisDir, "redis.conf"), assets.RedisConf, 0o640); err != nil {
+	if err := os.WriteFile(filepath.Join(redisDir, "redis.conf"), assets.RedisConf, 0o644); err != nil {
 		return fmt.Errorf("failed to write redis.conf: %w", err)
 	}
 
@@ -219,9 +215,9 @@ func stepWriteAssets(cfg SetupConfig, envFile string) error {
 	redisPass := ""
 	data, err := os.ReadFile(envFile)
 	if err == nil {
-		for _, line := range strings.Split(string(data), "\n") {
-			if strings.HasPrefix(line, "REDIS_PASSWORD=") {
-				redisPass = strings.TrimPrefix(line, "REDIS_PASSWORD=")
+		for line := range strings.SplitSeq(string(data), "\n") {
+			if after, ok := strings.CutPrefix(line, "REDIS_PASSWORD="); ok {
+				redisPass = after
 				break
 			}
 		}
@@ -231,7 +227,7 @@ func stepWriteAssets(cfg SetupConfig, envFile string) error {
 	}
 
 	acl := fmt.Sprintf("user default off\nuser tidefly on >%s ~* &* +@all\n", redisPass)
-	if err := os.WriteFile(filepath.Join(redisDir, "users.acl"), []byte(acl), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(redisDir, "users.acl"), []byte(acl), 0o644); err != nil {
 		return fmt.Errorf("failed to write users.acl: %w", err)
 	}
 
@@ -242,7 +238,15 @@ func stepWriteEnv(cfg SetupConfig, rt, envFile string) error {
 	vars := map[string]string{
 		"RUNTIME_TYPE":   rt,
 		"RUNTIME_SOCKET": cfg.SocketPath,
+		"TEMPLATES_DIR":  "/home/tidefly/templates",
 	}
+
+	if rt == "podman" {
+		vars["PODMAN_SOCK"] = cfg.SocketPath
+	} else {
+		vars["DOCKER_SOCK"] = cfg.SocketPath
+	}
+
 	if cfg.CaddyEnabled {
 		vars["CADDY_ENABLED"] = "true"
 		if !cfg.CaddyLater {
@@ -255,6 +259,7 @@ func stepWriteEnv(cfg SetupConfig, rt, envFile string) error {
 	} else {
 		vars["CADDY_ENABLED"] = "false"
 	}
+
 	if cfg.SMTPEnabled {
 		vars["SMTP_HOST"] = cfg.SMTPHost
 		vars["SMTP_PORT"] = cfg.SMTPPort
@@ -263,22 +268,8 @@ func stepWriteEnv(cfg SetupConfig, rt, envFile string) error {
 		vars["SMTP_FROM"] = cfg.SMTPFrom
 		vars["SMTP_TLS"] = cfg.SMTPTLS
 	}
-	return writeEnvVars(envFile, vars)
-}
 
-func stepCreateNetworks(cfg SetupConfig, rt string) error {
-	for _, network := range []string{"tidefly_proxy", "tidefly_internal"} {
-		cmd := exec.CommandContext(
-			context.Background(), rt,
-			"network", "create", "--driver", "bridge", "--label", "tidefly.managed=true", network,
-		)
-		cmd.Env = append(os.Environ(), envTypePrefix+cfg.Environment)
-		out, e := cmd.CombinedOutput()
-		if e != nil && !strings.Contains(string(out), "already exists") {
-			return fmt.Errorf("failed to create network %s: %s", network, strings.TrimSpace(string(out)))
-		}
-	}
-	return nil
+	return writeEnvVars(envFile, vars)
 }
 
 func stepCleanup(cfg SetupConfig, rt, cf, envFile string) error {
@@ -367,8 +358,6 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 			err = stepWriteAssets(cfg, envFile)
 		case strings.HasPrefix(label, "Writing environment"):
 			err = stepWriteEnv(cfg, rt, envFile)
-		case strings.HasPrefix(label, "Creating Docker networks"):
-			err = stepCreateNetworks(cfg, rt)
 		case strings.HasPrefix(label, "Cleaning up"):
 			err = stepCleanup(cfg, rt, cf, envFile)
 		case strings.HasPrefix(label, "Starting core"):

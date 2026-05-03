@@ -2,7 +2,6 @@
 set -euo pipefail
 
 REPO="tidefly-oss/tidefly-tui"
-INSTALL_DIR="${HOME}/.local/bin"
 BINARY="tidefly-tui"
 
 RED='\033[0;31m'
@@ -13,6 +12,14 @@ RESET='\033[0m'
 log_info()    { echo -e "${BLUE}[tidefly]${RESET} $*"; }
 log_success() { echo -e "${GREEN}[tidefly]${RESET} $*"; }
 log_error()   { echo -e "${RED}[tidefly]${RESET} $*" >&2; }
+
+# ── Install dir — root gets /usr/local/bin, user gets ~/.local/bin ────────────
+if [[ $EUID -eq 0 ]]; then
+    INSTALL_DIR="/usr/local/bin"
+else
+    INSTALL_DIR="${HOME}/.local/bin"
+    mkdir -p "$INSTALL_DIR"
+fi
 
 # ── Detect arch ───────────────────────────────────────────────────────────────
 detect_arch() {
@@ -61,6 +68,35 @@ get_latest_version() {
         | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
 }
 
+# ── PATH hint for non-root ────────────────────────────────────────────────────
+print_path_hint() {
+    if [[ ":$PATH:" == *":${INSTALL_DIR}:"* ]]; then
+        return
+    fi
+
+    echo ""
+    log_info "${INSTALL_DIR} is not in your PATH yet. Add it:"
+    echo ""
+
+    # Detect shell
+    local shell_name
+    shell_name=$(basename "${SHELL:-bash}")
+
+    case "$shell_name" in
+        fish)
+            echo -e "  ${BLUE}fish_add_path ${INSTALL_DIR}${RESET}"
+            ;;
+        zsh)
+            echo -e "  ${BLUE}echo 'export PATH=\"${INSTALL_DIR}:\$PATH\"' >> ~/.zshrc && source ~/.zshrc${RESET}"
+            ;;
+        *)
+            echo -e "  ${BLUE}echo 'export PATH=\"${INSTALL_DIR}:\$PATH\"' >> ~/.bashrc && source ~/.bashrc${RESET}"
+            ;;
+    esac
+
+    echo ""
+}
+
 # ── Install ───────────────────────────────────────────────────────────────────
 main() {
     check_deps
@@ -89,17 +125,17 @@ main() {
     fi
 
     chmod +x "$tmp"
-
-    if [[ -w "$INSTALL_DIR" ]]; then
-        mv "$tmp" "${INSTALL_DIR}/${BINARY}"
-    else
-        sudo mv "$tmp" "${INSTALL_DIR}/${BINARY}"
-    fi
+    mv "$tmp" "${INSTALL_DIR}/${BINARY}"
 
     log_success "Installed to ${INSTALL_DIR}/${BINARY}"
-    log_success "Run: tidefly-tui"
+
+    if [[ $EUID -ne 0 ]]; then
+        print_path_hint
+    fi
+
     echo ""
     echo -e "${GREEN}  → tidefly-tui${RESET}"
+    echo ""
 }
 
 main "$@"

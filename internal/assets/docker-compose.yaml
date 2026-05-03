@@ -2,19 +2,9 @@ networks:
   tidefly_internal:
     name: tidefly_internal
     driver: bridge
-    labels:
-      tidefly.internal: "true"
-    ipam:
-      config:
-        - subnet: 172.30.0.0/24
   tidefly_proxy:
     name: tidefly_proxy
     driver: bridge
-    labels:
-      tidefly.internal: "true"
-    ipam:
-      config:
-        - subnet: 172.31.0.0/16
 
 volumes:
   postgres_data:
@@ -25,9 +15,6 @@ volumes:
     name: tidefly_caddy_data
 
 services:
-  # -----------------------------
-  # Caddy Reverse Proxy
-  # -----------------------------
   caddy:
     image: ghcr.io/tidefly-oss/tidefly-caddy:latest
     container_name: tidefly_caddy
@@ -52,9 +39,6 @@ services:
       retries: 5
       start_period: 5s
 
-  # -----------------------------
-  # Backend
-  # -----------------------------
   backend:
     image: ghcr.io/tidefly-oss/tidefly-plane:latest
     container_name: tidefly_backend
@@ -65,7 +49,7 @@ services:
       - ./.env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /etc/tidefly-plane/templates:/etc/tidefly-plane/templates
+      - ${TIDEFLY_DIR:-${HOME}/.local/share/tidefly-plane}/templates:/home/tidefly/templates
     networks:
       - tidefly_internal
       - tidefly_proxy
@@ -77,9 +61,6 @@ services:
       caddy:
         condition: service_healthy
 
-  # -----------------------------
-  # Frontend (optional profile)
-  # -----------------------------
   ui:
     image: ghcr.io/tidefly-oss/tidefly-ui:latest
     container_name: tidefly_ui
@@ -95,9 +76,6 @@ services:
     profiles:
       - dashboard
 
-  # -----------------------------
-  # PostgreSQL
-  # -----------------------------
   postgres:
     image: postgres:18-alpine
     container_name: tidefly_postgres
@@ -121,9 +99,6 @@ services:
       retries: 5
       start_period: 10s
 
-  # -----------------------------
-  # Redis
-  # -----------------------------
   redis:
     image: redis:8-alpine
     container_name: tidefly_redis

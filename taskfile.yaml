@@ -1,11 +1,16 @@
-version: '3'
-
+version: "3"
 tasks:
   # ── Setup / Stop ─────────────────────────────
   setup:
     desc: "Start the TUI setup wizard (handles env, secrets, and containers internally)"
     cmds:
       - go run ./cmd/tidefly-installer
+    silent: false
+
+  uninstall:
+    desc: "Remove all Tidefly containers, volumes, networks and config"
+    cmds:
+      - go run ./cmd/tidefly-installer uninstall
     silent: false
 
   stop:

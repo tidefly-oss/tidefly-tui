@@ -13,7 +13,11 @@ func PlaneDir() string {
 	if p := os.Getenv("TIDEFLY_DIR"); p != "" {
 		return p
 	}
-	return "/etc/tidefly-plane"
+	base := os.Getenv("XDG_DATA_HOME")
+	if base == "" {
+		base = filepath.Join(os.Getenv("HOME"), ".local", "share")
+	}
+	return filepath.Join(base, "tidefly-plane")
 }
 
 // PlanePath is kept for backwards compatibility.

@@ -3,11 +3,13 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-
+	"github.com/tidefly-oss/tidefly-tui/internal/env"
 	"github.com/tidefly-oss/tidefly-tui/internal/pages"
 	"github.com/tidefly-oss/tidefly-tui/internal/styles"
 )
@@ -42,16 +44,13 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ready = true
 		pages.SetSize(ws.Width, ws.Height)
 	}
-
 	if !m.ready {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 	}
-
 	if nav, ok := msg.(pages.NavigateTo); ok {
 		mergeConfig(&m.cfg, nav.Config)
-
 		switch nav.Page {
 		case pages.PageHome:
 			m.current = pages.NewHome()
@@ -84,7 +83,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.current.Init()
 	}
-
 	var cmd tea.Cmd
 	m.current, cmd = m.current.Update(msg)
 	return m, cmd
@@ -137,10 +135,59 @@ func mergeConfig(dst *pages.SetupConfig, src pages.SetupConfig) {
 	}
 }
 
-func main() {
-	if os.Getuid() != 0 {
-		fmt.Fprintln(os.Stderr, "error: tidefly-tui must be run as root: sudo tidefly-tui")
+func runUninstall() {
+	baseDir := env.PlaneDir()
+
+	rt := "docker"
+	if _, err := exec.LookPath("docker"); err != nil {
+		if _, err := exec.LookPath("podman"); err == nil {
+			rt = "podman"
+		}
+	}
+
+	logInfo := func(msg string) { fmt.Printf("\033[34m[tidefly]\033[0m %s\n", msg) }
+	logOK := func(msg string) { fmt.Printf("\033[32m[tidefly]\033[0m %s\n", msg) }
+
+	logInfo("Stopping and removing containers...")
+
+	// UI Container explizit killen da er per profile läuft und ggf. nicht von compose down erfasst wird
+	for _, name := range []string{"tidefly_ui", "tidefly_ui_dev"} {
+		_ = exec.Command(rt, "rm", "-f", name).Run()
+	}
+
+	for _, cf := range []string{
+		filepath.Join(baseDir, "docker-compose.yaml"),
+		filepath.Join(baseDir, "docker-compose.dev.yaml"),
+	} {
+		if _, err := os.Stat(cf); err == nil {
+			cmd := exec.Command(rt, "compose", "-f", cf, "down", "--remove-orphans", "--volumes")
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			_ = cmd.Run()
+		}
+	}
+
+	logInfo("Removing networks...")
+	for _, network := range []string{
+		"tidefly_internal", "tidefly_proxy",
+		"tidefly_internal_dev", "tidefly_proxy_dev",
+	} {
+		_ = exec.Command(rt, "network", "rm", network).Run()
+	}
+
+	logInfo("Removing config directory...")
+	if err := os.RemoveAll(baseDir); err != nil {
+		fmt.Fprintf(os.Stderr, "\033[31m[tidefly]\033[0m failed to remove %s: %v\n", baseDir, err)
 		os.Exit(1)
+	}
+
+	logOK("Uninstall complete — run tidefly-tui to install fresh.")
+}
+
+func main() {
+	if len(os.Args) > 1 && os.Args[1] == "uninstall" {
+		runUninstall()
+		return
 	}
 
 	p := tea.NewProgram(

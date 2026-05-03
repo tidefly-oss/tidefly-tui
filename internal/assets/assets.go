@@ -10,3 +10,6 @@ var ComposeDev []byte
 
 //go:embed redis/redis.conf
 var RedisConf []byte
+
+//go:embed .env.example
+var EnvExample []byte

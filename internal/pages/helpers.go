@@ -78,6 +78,10 @@ SMTP_PASSWORD=
 SMTP_FROM=noreply@example.com
 SMTP_TLS=tls
 
+# ── Templates ────────────────────────────────────────────────────────
+TEMPLATES_DIR=/home/tidefly/templates
+TEMPLATES_REPO=https://github.com/tidefly-oss/tidefly-templates
+
 # ── Caddy ────────────────────────────────────────────────────────────
 CADDY_ENABLED=true
 CADDY_ADMIN_URL=http://caddy:2019
