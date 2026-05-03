@@ -207,7 +207,7 @@ func stepWriteAssets(cfg SetupConfig, envFile string) error {
 
 	// Redis conf
 	redisDir := filepath.Join(baseDir, "redis")
-	if err := os.MkdirAll(redisDir, 0o750); err != nil {
+	if err := os.MkdirAll(redisDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create redis dir: %w", err)
 	}
 	if err := os.WriteFile(filepath.Join(redisDir, "redis.conf"), assets.RedisConf, 0o644); err != nil {
