@@ -172,9 +172,12 @@ func stepGenerateSecrets(_ SetupConfig, envFile string) (err error) {
 		}
 	}()
 
-	// Basis: .env.example als Template
-	if _, err := f.Write(assets.EnvExample); err != nil {
-		return fmt.Errorf("failed to write env template: %w", err)
+	secrets, err := generateSecrets()
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprint(f, secrets); err != nil {
+		return fmt.Errorf("failed to write secrets: %w", err)
 	}
 
 	return nil
