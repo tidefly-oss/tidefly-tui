@@ -72,6 +72,7 @@ services:
       - ./.env.dev
     networks:
       - tidefly_internal
+      - tidefly_proxy
     depends_on:
       - backend
     profiles:
