@@ -45,6 +45,8 @@ services:
     labels:
       tidefly.internal: "true"
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:8181:8181"
     env_file:
       - ./.env
     volumes:
