@@ -53,20 +53,20 @@ func detect() tea.Cmd {
 			OS:   runtime.GOOS,
 			Arch: runtime.GOARCH,
 		}
-		result.DockerFound = commandExists("docker") && commandRunning("docker", "info")
-		result.PodmanFound = commandExists("podman") && commandRunning("podman", "info")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		result.DockerFound = commandExistsWithCtx(ctx, "docker") && commandRunningWithCtx(ctx, "docker", "info")
+		result.PodmanFound = commandExistsWithCtx(ctx, "podman") && commandRunningWithCtx(ctx, "podman", "info")
 		return result
 	}
 }
 
-func commandExists(cmd string) bool {
+func commandExistsWithCtx(_ context.Context, cmd string) bool {
 	_, err := exec.LookPath(cmd)
 	return err == nil
 }
 
-func commandRunning(cmd string, args ...string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
+func commandRunningWithCtx(ctx context.Context, cmd string, args ...string) bool {
 	return exec.CommandContext(ctx, cmd, args...).Run() == nil
 }
 
