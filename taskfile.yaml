@@ -1,8 +1,16 @@
 version: "3"
+
 tasks:
-  # ── Setup / Stop ─────────────────────────────
+  default:
+    desc: "Show all available tasks"
+    silent: true
+    cmds:
+      - task --list
+
+  # ── Setup / Lifecycle ─────────────────────────────────────────────────────
+
   setup:
-    desc: "Start the TUI setup wizard (handles env, secrets, and containers internally)"
+    desc: "Start the TUI setup wizard"
     cmds:
       - go run ./cmd/tidefly-installer
     silent: false
@@ -13,34 +21,43 @@ tasks:
       - go run ./cmd/tidefly-installer uninstall
     silent: false
 
-  stop:
-    desc: "Stop dev containers (handled inside TUI or manually)"
+  reset:
+    desc: "Uninstall and reinstall (fresh start)"
     cmds:
-      - echo "Use the TUI or run 'docker compose down' in backend/development if needed"
+      - task: uninstall
+      - task: setup
 
-  # ── Development / CI tasks ──────────────────
-  lint:
-    desc: "Run golangci-lint on TUI code"
-    cmds:
-      - golangci-lint run ./...
-
-  test:
-    desc: "Run all Go tests in the TUI"
-    cmds:
-      - go test ./... -v
+  # ── Build ─────────────────────────────────────────────────────────────────
 
   build:
     desc: "Build the TUI binary"
     cmds:
-      - go build -o bin/tidefly-tui ./cmd/tidefly-tui
-
-  fmt:
-    desc: "Format Go code using gofmt and goimports"
-    cmds:
-      - go fmt ./...
-      - goimports -w .
+      - go build -o bin/tidefly-tui ./cmd/tidefly-installer
 
   clean:
     desc: "Clean up build artifacts"
     cmds:
       - rm -rf bin/
+
+  # ── Quality ───────────────────────────────────────────────────────────────
+
+  lint:
+    desc: "Run golangci-lint"
+    cmds:
+      - golangci-lint run ./...
+
+  test:
+    desc: "Run all Go tests"
+    cmds:
+      - go test ./... -v
+
+  fmt:
+    desc: "Format Go code"
+    cmds:
+      - go fmt ./...
+      - goimports -w .
+
+  tidy:
+    desc: "go mod tidy"
+    cmds:
+      - go mod tidy

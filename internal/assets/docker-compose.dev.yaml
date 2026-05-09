@@ -48,6 +48,9 @@ services:
       - "127.0.0.1:8181:8181"
     env_file:
       - ./.env.dev
+    environment:
+      TIDEFLY_CONTAINER_NAME: tidefly_backend_dev
+      API_DOCS_ENABLED: "true"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${TIDEFLY_DIR:-${HOME}/.local/share/tidefly-plane}/templates:/home/tidefly/templates
@@ -61,6 +64,12 @@ services:
         condition: service_healthy
       caddy:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8181/api/v1/system/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   ui:
     image: tidefly/tidefly-ui:latest
@@ -68,15 +77,16 @@ services:
     labels:
       tidefly.internal: "true"
     restart: "no"
+    ports:
+      - "127.0.0.1:3000:3000"
     env_file:
       - ./.env.dev
     networks:
       - tidefly_internal
       - tidefly_proxy
     depends_on:
-      - backend
-    profiles:
-      - dashboard
+      backend:
+        condition: service_healthy
 
   postgres:
     image: postgres:18-alpine
@@ -84,6 +94,8 @@ services:
     labels:
       tidefly.internal: "true"
     restart: "no"
+    ports:
+      - "127.0.0.1:5432:5432"
     env_file:
       - ./.env.dev
     volumes:
@@ -110,6 +122,8 @@ services:
     command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     env_file:
       - ./.env.dev
+    ports:
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
       - ./redis:/usr/local/etc/redis

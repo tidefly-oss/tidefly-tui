@@ -33,7 +33,7 @@ services:
       - CADDY_ADMIN=0.0.0.0:2019
     command: caddy run --resume
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:2019/config/"]
+      test: [ "CMD", "wget", "-qO-", "http://localhost:2019/config/" ]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -49,6 +49,8 @@ services:
       - "127.0.0.1:8181:8181"
     env_file:
       - ./.env
+    environment:
+      TIDEFLY_CONTAINER_NAME: tidefly_backend
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${TIDEFLY_DIR:-${HOME}/.local/share/tidefly-plane}/templates:/home/tidefly/templates
@@ -62,6 +64,12 @@ services:
         condition: service_healthy
       caddy:
         condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:8181/api/v1/system/health || exit 1" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   ui:
     image: tidefly/tidefly-ui:latest
@@ -108,7 +116,7 @@ services:
     labels:
       tidefly.internal: "true"
     restart: unless-stopped
-    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    command: [ "redis-server", "/usr/local/etc/redis/redis.conf" ]
     env_file:
       - ./.env
     volumes:
