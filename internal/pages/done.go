@@ -36,10 +36,6 @@ func (m *DoneModel) View() string {
 	if backendPort == "" {
 		backendPort = "8181"
 	}
-	frontendPort := os.Getenv("FRONTEND_PORT")
-	if frontendPort == "" {
-		frontendPort = "5173"
-	}
 
 	header := lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -47,15 +43,13 @@ func (m *DoneModel) View() string {
 		"",
 	)
 
-	primaryURL := ""
-	if cfg.WithDashboard {
-		if cfg.CaddyEnabled && cfg.CaddyDomain != "" {
-			primaryURL = "https://tidefly." + cfg.CaddyDomain
-		} else {
-			primaryURL = "http://localhost:" + frontendPort
-		}
+	var primaryURL string
+	if cfg.CaddyEnabled && cfg.CaddyDomain != "" {
+		primaryURL = "https://tidefly." + cfg.CaddyDomain
+	} else if cfg.Environment == EnvDevelopment {
+		primaryURL = "http://localhost:3000"
 	} else {
-		primaryURL = "http://localhost:" + backendPort
+		primaryURL = "http://localhost:3000"
 	}
 
 	access := lipgloss.JoinVertical(
@@ -73,17 +67,14 @@ func (m *DoneModel) View() string {
 			styles.InputLabel.Render("Dev tools:"),
 			styles.Help.Render(fmt.Sprintf("  API     → http://localhost:%s", backendPort)),
 			styles.Help.Render(fmt.Sprintf("  Swagger → http://localhost:%s/docs", backendPort)),
-			styles.Help.Render("  Mailpit → http://localhost:18025"),
 		)
-	} else if cfg.CaddyEnabled {
+	} else if cfg.CaddyEnabled && cfg.CaddyDomain != "" {
 		links = lipgloss.JoinVertical(
 			lipgloss.Left,
 			styles.InputLabel.Render("Services:"),
-			styles.Help.Render(fmt.Sprintf("  API         → https://api.%s", cfg.CaddyDomain)),
+			styles.Help.Render(fmt.Sprintf("  Dashboard → https://tidefly.%s", cfg.CaddyDomain)),
+			styles.Help.Render(fmt.Sprintf("  API       → https://api.%s", cfg.CaddyDomain)),
 		)
-		if cfg.WithDashboard {
-			links += "\n" + styles.Help.Render(fmt.Sprintf("  Dashboard   → https://tidefly.%s", cfg.CaddyDomain))
-		}
 	}
 
 	help := "\n" + styles.Help.Render("press q to exit")

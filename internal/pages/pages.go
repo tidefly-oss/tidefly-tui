@@ -22,7 +22,6 @@ const (
 	PageHome Page = iota
 	PageRuntime
 	PageEnvironment
-	PageDashboard
 	PageCaddy
 	PageSMTP
 	PageExtras
@@ -38,10 +37,9 @@ type NavigateTo struct {
 }
 
 type SetupConfig struct {
-	Runtime       string
-	SocketPath    string
-	Environment   string
-	WithDashboard bool
+	Runtime     string
+	SocketPath  string
+	Environment string
 
 	CaddyEnabled bool
 	CaddyLater   bool

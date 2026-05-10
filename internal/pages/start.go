@@ -15,7 +15,6 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-
 	"github.com/tidefly-oss/tidefly-tui/internal/assets"
 	"github.com/tidefly-oss/tidefly-tui/internal/env"
 	"github.com/tidefly-oss/tidefly-tui/internal/styles"
@@ -55,14 +54,10 @@ func NewStart(cfg SetupConfig) *StartModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(styles.Primary)
-	return &StartModel{cfg: cfg, spinner: s, steps: buildSteps(cfg)}
+	return &StartModel{cfg: cfg, spinner: s, steps: buildSteps()}
 }
 
-func buildSteps(cfg SetupConfig) []startStep {
-	backendLabel := "Starting backend"
-	if cfg.WithDashboard {
-		backendLabel = "Starting backend + dashboard"
-	}
+func buildSteps() []startStep {
 	return []startStep{
 		{label: "Pulling Docker images"},
 		{label: "Generating secrets"},
@@ -72,7 +67,8 @@ func buildSteps(cfg SetupConfig) []startStep {
 		{label: "Starting core services (Postgres, Redis, Caddy)"},
 		{label: "Waiting for Postgres to be healthy"},
 		{label: "Waiting for Redis to be healthy"},
-		{label: backendLabel},
+		{label: "Starting backend + dashboard"},
+		{label: "Waiting for backend to be healthy"},
 	}
 }
 
@@ -132,15 +128,13 @@ func podmanEnv(cmd *exec.Cmd, rt, socketPath, environment string) *exec.Cmd {
 	return cmd
 }
 
-func stepPullImages(cfg SetupConfig, rt string) error {
+func stepPullImages(rt string) error {
 	images := []string{
 		"tidefly/tidefly-plane:latest",
+		"tidefly/tidefly-ui:latest",
 		"tidefly/tidefly-caddy:latest",
 		"postgres:18-alpine",
 		"redis:8-alpine",
-	}
-	if cfg.WithDashboard {
-		images = append(images, "tidefly/tidefly-ui:latest")
 	}
 	for _, img := range images {
 		cmd := exec.CommandContext(context.Background(), rt, "pull", img)
@@ -152,7 +146,7 @@ func stepPullImages(cfg SetupConfig, rt string) error {
 	return nil
 }
 
-func stepGenerateSecrets(_ SetupConfig, envFile string) (err error) {
+func stepGenerateSecrets(cfg SetupConfig, envFile string) (err error) {
 	if _, err := os.Stat(envFile); err == nil {
 		return nil
 	}
@@ -172,7 +166,7 @@ func stepGenerateSecrets(_ SetupConfig, envFile string) (err error) {
 		}
 	}()
 
-	secrets, err := generateSecrets()
+	secrets, err := generateSecrets(cfg.Environment)
 	if err != nil {
 		return err
 	}
@@ -190,7 +184,6 @@ func stepWriteAssets(cfg SetupConfig, envFile string) error {
 		return fmt.Errorf("failed to create config dir: %w", err)
 	}
 
-	// Compose file
 	var composeData []byte
 	var composeName string
 	if cfg.Environment == EnvProduction {
@@ -205,7 +198,6 @@ func stepWriteAssets(cfg SetupConfig, envFile string) error {
 		return fmt.Errorf("failed to write compose file: %w", err)
 	}
 
-	// Redis conf
 	redisDir := filepath.Join(baseDir, "redis")
 	if err := os.MkdirAll(redisDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create redis dir: %w", err)
@@ -214,7 +206,6 @@ func stepWriteAssets(cfg SetupConfig, envFile string) error {
 		return fmt.Errorf("failed to write redis.conf: %w", err)
 	}
 
-	// Redis ACL — Passwort aus envFile lesen
 	redisPass := ""
 	data, err := os.ReadFile(envFile)
 	if err == nil {
@@ -319,15 +310,7 @@ func stepWaitHealthy(rt, container string, timeout time.Duration) error {
 }
 
 func stepStartBackend(cfg SetupConfig, rt, cf, envFile string) error {
-	var args []string
-	if cfg.WithDashboard {
-		args = []string{
-			cmdCompose, "-f", cf, flagEnvFile, envFile,
-			"--profile", "dashboard", "up", "-d", "backend", "ui",
-		}
-	} else {
-		args = []string{cmdCompose, "-f", cf, flagEnvFile, envFile, "up", "-d", "backend"}
-	}
+	args := []string{cmdCompose, "-f", cf, flagEnvFile, envFile, "up", "-d", "backend", "ui"}
 	cmd := podmanEnv(exec.CommandContext(context.Background(), rt, args...), rt, cfg.SocketPath, cfg.Environment)
 	out, e := cmd.CombinedOutput()
 	if e != nil {
@@ -344,7 +327,7 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 		rt = "docker"
 	}
 	cf, envFile := m.composePaths()
-	steps := buildSteps(cfg)
+	steps := buildSteps()
 	if step >= len(steps) {
 		return nil
 	}
@@ -354,7 +337,7 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 		var err error
 		switch {
 		case strings.HasPrefix(label, "Pulling"):
-			err = stepPullImages(cfg, rt)
+			err = stepPullImages(rt)
 		case strings.HasPrefix(label, "Generating"):
 			err = stepGenerateSecrets(cfg, envFile)
 		case strings.HasPrefix(label, "Writing assets"):
@@ -379,6 +362,12 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 			err = stepWaitHealthy(rt, container, 30*time.Second)
 		case strings.HasPrefix(label, "Starting backend"):
 			err = stepStartBackend(cfg, rt, cf, envFile)
+		case strings.HasPrefix(label, "Waiting for backend"):
+			container := "tidefly_backend"
+			if cfg.Environment != EnvProduction {
+				container = "tidefly_backend_dev"
+			}
+			err = stepWaitHealthy(rt, container, 120*time.Second)
 		}
 		return startStepResult{step: step, err: err}
 	}

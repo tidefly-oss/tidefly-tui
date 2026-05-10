@@ -68,8 +68,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.current = pages.NewRuntime(docker, podman)
 		case pages.PageEnvironment:
 			m.current = pages.NewEnvironment(m.cfg)
-		case pages.PageDashboard:
-			m.current = pages.NewDashboard(m.cfg)
 		case pages.PageCaddy:
 			m.current = pages.NewCaddy(m.cfg)
 		case pages.PageSMTP:
@@ -106,7 +104,6 @@ func mergeConfig(dst *pages.SetupConfig, src pages.SetupConfig) {
 	if src.Environment != "" {
 		dst.Environment = src.Environment
 	}
-	dst.WithDashboard = src.WithDashboard
 	dst.CaddyEnabled = src.CaddyEnabled
 	if src.CaddyDomain != "" {
 		dst.CaddyDomain = src.CaddyDomain
@@ -138,7 +135,7 @@ func mergeConfig(dst *pages.SetupConfig, src pages.SetupConfig) {
 
 func runUninstall() {
 	baseDir := env.PlaneDir()
-	ctx := context.Background() // context.Background() importieren
+	ctx := context.Background()
 
 	rt := "docker"
 	if _, err := exec.LookPath("docker"); err != nil {
@@ -178,7 +175,7 @@ func runUninstall() {
 
 	logInfo("Removing config directory...")
 	if err := os.RemoveAll(baseDir); err != nil {
-		fmt.Fprintf(os.Stderr, "\033[31m[tidefly]\033[0m failed to remove %s: %v\n", baseDir, err)
+		_, _ = fmt.Fprintf(os.Stderr, "\033[31m[tidefly]\033[0m failed to remove %s: %v\n", baseDir, err)
 		os.Exit(1)
 	}
 
@@ -196,7 +193,7 @@ func main() {
 		tea.WithAltScreen(),
 	)
 	if _, err := p.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 }

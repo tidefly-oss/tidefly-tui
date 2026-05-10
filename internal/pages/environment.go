@@ -38,7 +38,7 @@ func (m *EnvironmentModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cfg.Environment = env
 			cfg := m.cfg
 			return m, func() tea.Msg {
-				return NavigateTo{Page: PageDashboard, Config: cfg}
+				return NavigateTo{Page: PageCaddy, Config: cfg}
 			}
 		case key.Matches(keyMsg, keys.Quit):
 			return m, tea.Quit
@@ -91,7 +91,6 @@ func (m *EnvironmentModel) View() string {
 
 		list += cursor + label + "\n" + desc + "\n"
 
-		// Dev warning — only show when selected
 		if i == 0 && isSelected && opt.warn != "" {
 			list += "\n" + lipgloss.NewStyle().
 				Foreground(styles.Warning).

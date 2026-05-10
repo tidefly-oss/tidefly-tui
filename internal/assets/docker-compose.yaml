@@ -83,9 +83,8 @@ services:
       - tidefly_internal
       - tidefly_proxy
     depends_on:
-      - backend
-    profiles:
-      - dashboard
+      backend:
+        condition: service_healthy
 
   postgres:
     image: postgres:18-alpine
