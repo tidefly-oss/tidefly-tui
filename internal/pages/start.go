@@ -242,16 +242,16 @@ func stepWriteEnv(cfg SetupConfig, rt, envFile string) error {
 	}
 
 	if cfg.CaddyEnabled {
-		vars["CADDY_ENABLED"] = "true"
+		vars["CADDY_ENABLED"] = boolTrue
 		if !cfg.CaddyLater {
 			vars["CADDY_BASE_DOMAIN"] = cfg.CaddyDomain
 			vars["CADDY_ACME_EMAIL"] = cfg.CaddyEmail
 			if cfg.CaddyStaging {
-				vars["CADDY_ACME_STAGING"] = "true"
+				vars["CADDY_ACME_STAGING"] = boolTrue
 			}
 		}
 	} else {
-		vars["CADDY_ENABLED"] = "false"
+		vars["CADDY_ENABLED"] = boolFalse
 	}
 
 	if cfg.SMTPEnabled {

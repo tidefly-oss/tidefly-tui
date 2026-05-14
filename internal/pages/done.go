@@ -44,11 +44,10 @@ func (m *DoneModel) View() string {
 	)
 
 	var primaryURL string
-	if cfg.CaddyEnabled && cfg.CaddyDomain != "" {
+	switch {
+	case cfg.CaddyEnabled && cfg.CaddyDomain != "":
 		primaryURL = "https://tidefly." + cfg.CaddyDomain
-	} else if cfg.Environment == EnvDevelopment {
-		primaryURL = "http://localhost:3000"
-	} else {
+	default:
 		primaryURL = "http://localhost:3000"
 	}
 
