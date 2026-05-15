@@ -31,14 +31,19 @@ func (m *EnvironmentModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor++
 			}
 		case key.Matches(keyMsg, keys.Enter):
-			env := EnvProduction
+			var env string
+			var nextPage Page
 			if m.cursor == 0 {
-				env = EnvDevelopment
+				env = EnvDevelopmentLocal
+				nextPage = PageDevPaths
+			} else {
+				env = EnvProduction
+				nextPage = PageCaddy
 			}
 			m.cfg.Environment = env
 			cfg := m.cfg
 			return m, func() tea.Msg {
-				return NavigateTo{Page: PageCaddy, Config: cfg}
+				return NavigateTo{Page: nextPage, Config: cfg}
 			}
 		case key.Matches(keyMsg, keys.Quit):
 			return m, tea.Quit
@@ -51,7 +56,7 @@ func (m *EnvironmentModel) View() string {
 	header := lipgloss.JoinVertical(
 		lipgloss.Left,
 		styles.Title.Render("Environment"),
-		styles.Subtitle.Render("Where are you deploying Tidefly?"),
+		styles.Subtitle.Render("How do you want to run Tidefly?"),
 		"",
 	)
 
@@ -63,13 +68,13 @@ func (m *EnvironmentModel) View() string {
 
 	opts := []envOpt{
 		{
-			label: "Development",
-			desc:  "Hot reload, verbose logs, Mailpit — for contributing to Tidefly",
-			warn:  "⚠  NOT for production use — no hardened security defaults",
+			label: "Development (local)",
+			desc:  "Infra in Docker, backend + UI run locally — fast HMR, no image builds",
+			warn:  "⚠  Requires Go + Node.js / pnpm installed locally",
 		},
 		{
 			label: "Production",
-			desc:  "Optimized, secure defaults, your own SMTP",
+			desc:  "Everything in Docker — optimized, secure defaults, your own SMTP",
 		},
 	}
 
@@ -91,7 +96,7 @@ func (m *EnvironmentModel) View() string {
 
 		list += cursor + label + "\n" + desc + "\n"
 
-		if i == 0 && isSelected && opt.warn != "" {
+		if isSelected && opt.warn != "" {
 			list += "\n" + lipgloss.NewStyle().
 				Foreground(styles.Warning).
 				Bold(true).

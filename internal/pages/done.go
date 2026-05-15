@@ -60,14 +60,16 @@ func (m *DoneModel) View() string {
 	)
 
 	links := ""
-	if cfg.Environment == EnvDevelopment {
+	switch {
+	case cfg.Environment == EnvDevelopmentLocal:
 		links = lipgloss.JoinVertical(
 			lipgloss.Left,
 			styles.InputLabel.Render("Dev tools:"),
+			styles.Help.Render("  UI      → http://localhost:5173"),
 			styles.Help.Render(fmt.Sprintf("  API     → http://localhost:%s", backendPort)),
 			styles.Help.Render(fmt.Sprintf("  Swagger → http://localhost:%s/docs", backendPort)),
 		)
-	} else if cfg.CaddyEnabled && cfg.CaddyDomain != "" {
+	case cfg.CaddyEnabled && cfg.CaddyDomain != "":
 		links = lipgloss.JoinVertical(
 			lipgloss.Left,
 			styles.InputLabel.Render("Services:"),

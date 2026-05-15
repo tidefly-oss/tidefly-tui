@@ -13,6 +13,9 @@ import (
 const (
 	boolTrue  = "true"
 	boolFalse = "false"
+
+	svcPostgres = "postgres"
+	svcRedis    = "redis"
 )
 
 func navigate(page Page, cfg SetupConfig) tea.Cmd {
@@ -44,7 +47,13 @@ func generateSecrets(environment string) (string, error) {
 	pgPass = sanitizePassword(pgPass)
 	redisPass = sanitizePassword(redisPass)
 
-	isDev := environment == EnvDevelopment
+	isDev := environment == EnvDevelopmentLocal
+	dbHost := svcPostgres
+	redisHost := svcRedis
+	if isDev {
+		dbHost = "localhost"
+		redisHost = "localhost"
+	}
 	appEnv := "production"
 	apiDocs := boolFalse
 	if isDev {
@@ -63,14 +72,14 @@ TIDEFLY_ENCRYPTION_KEY=%s
 AGENT_GRPC_PORT=7443
 
 # ── Database / Postgres ──────────────────────────────────────────────
-DATABASE_URL=postgres://tidefly:%s@postgres:5432/tidefly?sslmode=disable
+DATABASE_URL=postgres://tidefly:%s@%s:5432/tidefly?sslmode=disable
 POSTGRES_USER=tidefly
 POSTGRES_PASSWORD=%s
 POSTGRES_DB=tidefly
 
 # ── Cache / Redis ────────────────────────────────────────────────────
-REDIS_URL=redis://tidefly:%s@redis:6379/0
-REDIS_ADDR=redis:6379
+REDIS_URL=redis://tidefly:%s@%s:6379/0
+REDIS_ADDR=%s:6379
 REDIS_USER=tidefly
 REDIS_PASSWORD=%s
 
@@ -131,8 +140,8 @@ JOBS_HEALTH_CHECK_CRON=*/5 * * * *
 JOBS_CONCURRENCY=5
 `,
 		appEnv, appSecret, apiDocs, encKey,
-		pgPass, pgPass,
-		redisPass, redisPass,
+		pgPass, dbHost, pgPass,
+		redisPass, redisHost, redisHost, redisPass,
 		jwtSecret,
 	)
 

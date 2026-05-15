@@ -65,11 +65,11 @@ services:
       caddy:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD-SHELL", "wget -qO- http://localhost:8181/api/v1/system/health || exit 1" ]
-      interval: 30s
+      test: ["CMD", "/app/healthcheck"]
+      interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 10s
+      retries: 5
+      start_period: 30s
 
   ui:
     image: tidefly/tidefly-ui:latest

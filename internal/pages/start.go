@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -54,10 +55,24 @@ func NewStart(cfg SetupConfig) *StartModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(styles.Primary)
-	return &StartModel{cfg: cfg, spinner: s, steps: buildSteps()}
+	return &StartModel{cfg: cfg, spinner: s, steps: buildSteps(cfg)}
 }
 
-func buildSteps() []startStep {
+func buildSteps(cfg SetupConfig) []startStep {
+	if cfg.Environment == EnvDevelopmentLocal {
+		return []startStep{
+			{label: "Generating secrets"},
+			{label: "Writing assets"},
+			{label: "Writing environment config"},
+			{label: "Cleaning up existing containers"},
+			{label: "Starting Postgres + Redis"},
+			{label: "Waiting for Postgres to be healthy"},
+			{label: "Waiting for Redis to be healthy"},
+			{label: "Starting backend (local)"},
+			{label: "Waiting for backend to be healthy"},
+			{label: "Starting UI (local)"},
+		}
+	}
 	return []startStep{
 		{label: "Pulling Docker images"},
 		{label: "Generating secrets"},
@@ -83,12 +98,12 @@ func (m *StartModel) Init() tea.Cmd {
 }
 
 func (m *StartModel) composePaths() (cf, envFile string) {
-	isProd := m.cfg.Environment == EnvProduction
 	baseDir := env.PlaneDir()
-	if isProd {
+	if m.cfg.Environment == EnvProduction {
 		cf = filepath.Join(baseDir, "docker-compose.yaml")
 		envFile = filepath.Join(baseDir, ".env")
 	} else {
+		// EnvDevelopmentLocal
 		cf = filepath.Join(baseDir, "docker-compose.dev.yaml")
 		envFile = filepath.Join(baseDir, ".env.dev")
 	}
@@ -190,6 +205,7 @@ func stepWriteAssets(cfg SetupConfig, envFile string) error {
 		composeData = assets.ComposeProduction
 		composeName = "docker-compose.yaml"
 	} else {
+		// EnvDevelopmentLocal
 		composeData = assets.ComposeDev
 		composeName = "docker-compose.dev.yaml"
 	}
@@ -286,7 +302,7 @@ func stepStartCore(cfg SetupConfig, rt, cf, envFile string) error {
 	if _, err := os.Stat(envFile); err != nil {
 		return fmt.Errorf(".env not found: %s", envFile)
 	}
-	args := []string{cmdCompose, "-f", cf, flagEnvFile, envFile, "up", "-d", "postgres", "redis", "caddy"}
+	args := []string{cmdCompose, "-f", cf, flagEnvFile, envFile, "up", "-d", svcPostgres, svcRedis, "caddy"}
 	cmd := podmanEnv(exec.CommandContext(context.Background(), rt, args...), rt, cfg.SocketPath, cfg.Environment)
 	out, e := cmd.CombinedOutput()
 	if e != nil {
@@ -327,7 +343,7 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 		rt = "docker"
 	}
 	cf, envFile := m.composePaths()
-	steps := buildSteps()
+	steps := buildSteps(cfg)
 	if step >= len(steps) {
 		return nil
 	}
@@ -346,25 +362,31 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 			err = stepWriteEnv(cfg, rt, envFile)
 		case strings.HasPrefix(label, "Cleaning up"):
 			err = stepCleanup(cfg, rt, cf, envFile)
+		case strings.HasPrefix(label, "Starting Postgres + Redis"):
+			err = stepStartInfra(cfg, rt, cf, envFile)
 		case strings.HasPrefix(label, "Starting core"):
 			err = stepStartCore(cfg, rt, cf, envFile)
 		case strings.HasPrefix(label, "Waiting for Postgres"):
 			container := "tidefly_postgres"
-			if cfg.Environment != EnvProduction {
+			if cfg.Environment == EnvDevelopmentLocal {
 				container = "tidefly_postgres_dev"
 			}
 			err = stepWaitHealthy(rt, container, 90*time.Second)
 		case strings.HasPrefix(label, "Waiting for Redis"):
 			container := "tidefly_redis"
-			if cfg.Environment != EnvProduction {
+			if cfg.Environment == EnvDevelopmentLocal {
 				container = "tidefly_redis_dev"
 			}
 			err = stepWaitHealthy(rt, container, 30*time.Second)
+		case strings.HasPrefix(label, "Starting backend (local)"):
+			err = stepStartLocalBackend(cfg, envFile)
+		case strings.HasPrefix(label, "Starting UI (local)"):
+			err = stepStartLocalUI(cfg)
 		case strings.HasPrefix(label, "Starting backend"):
 			err = stepStartBackend(cfg, rt, cf, envFile)
 		case strings.HasPrefix(label, "Waiting for backend"):
 			container := "tidefly_backend"
-			if cfg.Environment != EnvProduction {
+			if cfg.Environment == EnvDevelopmentLocal {
 				container = "tidefly_backend_dev"
 			}
 			err = stepWaitHealthy(rt, container, 120*time.Second)
@@ -530,4 +552,116 @@ func rewriteFile(f *os.File, lines []string) error {
 		}
 	}
 	return w.Flush()
+}
+
+// stepStartInfra starts only postgres + redis (for dev-local mode).
+func stepStartInfra(cfg SetupConfig, rt, cf, envFile string) error {
+	if _, err := os.Stat(cf); err != nil {
+		return fmt.Errorf("compose file not found: %s", cf)
+	}
+	if _, err := os.Stat(envFile); err != nil {
+		return fmt.Errorf(".env not found: %s", envFile)
+	}
+	args := []string{cmdCompose, "-f", cf, flagEnvFile, envFile, "up", "-d", svcPostgres, svcRedis}
+	cmd := podmanEnv(exec.CommandContext(context.Background(), rt, args...), rt, cfg.SocketPath, cfg.Environment)
+	out, e := cmd.CombinedOutput()
+	if e != nil {
+		return fmt.Errorf("failed to start infra: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// stepStartLocalBackend starts tidefly-plane locally via `go run`.
+// It loads the .env file and injects DATABASE_URL / REDIS_URL with localhost addresses.
+func stepStartLocalBackend(cfg SetupConfig, envFile string) error {
+	if cfg.DevPlanePath == "" {
+		return fmt.Errorf("tidefly-plane path not set")
+	}
+	if _, err := os.Stat(cfg.DevPlanePath); err != nil {
+		return fmt.Errorf("tidefly-plane path not found: %s", cfg.DevPlanePath)
+	}
+
+	// Read .env and patch DB/Redis URLs to localhost
+	envVars, err := loadEnvFile(envFile)
+	if err != nil {
+		return fmt.Errorf("failed to load env file: %w", err)
+	}
+	// Rewrite service hostnames to localhost for local process
+	for k, v := range envVars {
+		v = strings.ReplaceAll(v, "@postgres:", "@localhost:")
+		v = strings.ReplaceAll(v, "@redis:", "@localhost:")
+		v = strings.ReplaceAll(v, "http://caddy:", "http://localhost:")
+		envVars[k] = v
+	}
+	// Force APP_ENV=development
+	envVars["APP_ENV"] = "development"
+	envVars["API_DOCS_ENABLED"] = boolTrue
+
+	cmd := exec.CommandContext(context.Background(), "go", "run", "./cmd/tidefly-plane")
+	cmd.Dir = cfg.DevPlanePath
+	cmd.Env = os.Environ()
+	for k, v := range envVars {
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start backend: %w", err)
+	}
+
+	// Wait for it to be healthy
+	deadline := time.Now().Add(60 * time.Second)
+	for time.Now().Before(deadline) {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost:8181/api/v1/system/health", nil)
+		resp, e := http.DefaultClient.Do(req)
+		cancel()
+		if e == nil && resp.StatusCode == http.StatusOK {
+			_ = resp.Body.Close()
+			return nil
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return fmt.Errorf("backend did not become healthy within 60s")
+}
+
+// stepStartLocalUI starts tidefly-ui locally via `pnpm dev`.
+func stepStartLocalUI(cfg SetupConfig) error {
+	if cfg.DevUIPath == "" {
+		return fmt.Errorf("tidefly-ui path not set")
+	}
+	if _, err := os.Stat(cfg.DevUIPath); err != nil {
+		return fmt.Errorf("tidefly-ui path not found: %s", cfg.DevUIPath)
+	}
+
+	cmd := exec.CommandContext(context.Background(), "pnpm", "dev")
+	cmd.Dir = cfg.DevUIPath
+	cmd.Env = append(os.Environ(), "PUBLIC_API_URL=http://localhost:8181")
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start UI: %w (is pnpm installed?)", err)
+	}
+	// Give it a moment to boot
+	time.Sleep(2 * time.Second)
+	return nil
+}
+
+// loadEnvFile reads a .env file into a map, skipping comments and blank lines.
+func loadEnvFile(path string) (map[string]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]string)
+	for line := range strings.SplitSeq(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		result[strings.TrimSpace(k)] = strings.TrimSpace(v)
+	}
+	return result, nil
 }

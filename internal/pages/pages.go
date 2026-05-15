@@ -3,11 +3,11 @@ package pages
 import tea "github.com/charmbracelet/bubbletea"
 
 const (
-	EnvDevelopment = "development"
-	EnvProduction  = "production"
-	OSLinux        = "linux"
-	PodmanSocket   = "/run/user/1000/podman/podman.sock"
-	runtimePodman  = "podman"
+	EnvDevelopmentLocal = "development-local"
+	EnvProduction       = "production"
+	OSLinux             = "linux"
+	PodmanSocket        = "/run/user/1000/podman/podman.sock"
+	runtimePodman       = "podman"
 )
 
 type Model interface {
@@ -22,6 +22,7 @@ const (
 	PageHome Page = iota
 	PageRuntime
 	PageEnvironment
+	PageDevPaths
 	PageCaddy
 	PageSMTP
 	PageExtras
@@ -40,6 +41,9 @@ type SetupConfig struct {
 	Runtime     string
 	SocketPath  string
 	Environment string
+
+	DevPlanePath string
+	DevUIPath    string
 
 	CaddyEnabled bool
 	CaddyLater   bool
