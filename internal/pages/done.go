@@ -71,8 +71,8 @@ func (m *DoneModel) View() string {
 			styles.Help.Render("  Terminal 1 →  cd "+cfg.DevPlanePath+" && air"),
 			styles.Help.Render("  Terminal 2 →  cd "+cfg.DevUIPath+" && pnpm dev"),
 			"",
-			styles.Help.Render("  API     → http://localhost:8181"),
-			styles.Help.Render("  Swagger → http://localhost:8181/docs"),
+			styles.Help.Render(fmt.Sprintf("  API     → http://localhost:%s", backendPort)),
+			styles.Help.Render(fmt.Sprintf("  Swagger → http://localhost:%s/docs", backendPort)),
 			styles.Help.Render("  UI      → http://localhost:5173"),
 		)
 	case cfg.CaddyEnabled && cfg.CaddyDomain != "":

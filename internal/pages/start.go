@@ -602,61 +602,6 @@ func stepStartInfra(cfg SetupConfig, rt, cf, envFile string) error {
 	return nil
 }
 
-// stepStartLocalBackend starts tidefly-plane locally via `go run`.
-// It loads the .env file and injects DATABASE_URL / REDIS_URL with localhost addresses.
-func stepStartLocalBackend(cfg SetupConfig, envFile string) error {
-	if cfg.DevPlanePath == "" {
-		return fmt.Errorf("tidefly-plane path not set")
-	}
-	if _, err := os.Stat(cfg.DevPlanePath); err != nil {
-		return fmt.Errorf("tidefly-plane path not found: %s", cfg.DevPlanePath)
-	}
-
-	// Read .env and patch DB/Redis URLs to localhost
-	envVars, err := loadEnvFile(envFile)
-	if err != nil {
-		return fmt.Errorf("failed to load env file: %w", err)
-	}
-	// Rewrite service hostnames to localhost for local process
-	for k, v := range envVars {
-		v = strings.ReplaceAll(v, "@postgres:", "@localhost:")
-		v = strings.ReplaceAll(v, "@redis:", "@localhost:")
-		v = strings.ReplaceAll(v, "http://caddy:", "http://localhost:")
-		envVars[k] = v
-	}
-	// Force APP_ENV=development
-	envVars["APP_ENV"] = "development"
-	envVars["API_DOCS_ENABLED"] = boolTrue
-
-	cmd := exec.CommandContext(context.Background(), "air")
-	cmd.Dir = cfg.DevPlanePath
-	cmd.Env = os.Environ()
-	for k, v := range envVars {
-		cmd.Env = append(cmd.Env, k+"="+v)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start backend: %w", err)
-	}
-
-	// Wait for it to be healthy
-	deadline := time.Now().Add(60 * time.Second)
-	for time.Now().Before(deadline) {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost:8181/api/v1/system/health", nil)
-		resp, e := http.DefaultClient.Do(req)
-		cancel()
-		if e == nil {
-			_ = resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return nil
-			}
-		}
-		time.Sleep(2 * time.Second)
-	}
-	return fmt.Errorf("backend did not become healthy within 60s")
-}
-
 // stepStartLocalUI starts tidefly-ui locally via `pnpm dev`.
 func stepStartLocalUI(cfg SetupConfig) error {
 	if cfg.DevUIPath == "" {
@@ -676,27 +621,6 @@ func stepStartLocalUI(cfg SetupConfig) error {
 	// Give it a moment to boot
 	time.Sleep(2 * time.Second)
 	return nil
-}
-
-// loadEnvFile reads a .env file into a map, skipping comments and blank lines.
-func loadEnvFile(path string) (map[string]string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	result := make(map[string]string)
-	for line := range strings.SplitSeq(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		k, v, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		result[strings.TrimSpace(k)] = strings.TrimSpace(v)
-	}
-	return result, nil
 }
 
 // stepWaitLocalBackend polls localhost:8181 until healthy or times out.
