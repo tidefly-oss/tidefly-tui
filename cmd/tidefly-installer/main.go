@@ -68,6 +68,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.current = pages.NewRuntime(docker, podman)
 		case pages.PageEnvironment:
 			m.current = pages.NewEnvironment(m.cfg)
+		case pages.PageDevPaths:
+			m.current = pages.NewDevPaths(m.cfg)
 		case pages.PageCaddy:
 			m.current = pages.NewCaddy(m.cfg)
 		case pages.PageSMTP:
@@ -130,6 +132,12 @@ func mergeConfig(dst *pages.SetupConfig, src pages.SetupConfig) {
 	}
 	if src.SMTPTLS != "" {
 		dst.SMTPTLS = src.SMTPTLS
+	}
+	if src.DevPlanePath != "" {
+		dst.DevPlanePath = src.DevPlanePath
+	}
+	if src.DevUIPath != "" {
+		dst.DevUIPath = src.DevUIPath
 	}
 }
 

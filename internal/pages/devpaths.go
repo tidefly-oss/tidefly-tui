@@ -30,18 +30,18 @@ type DevPathsModel struct {
 func NewDevPaths(cfg SetupConfig) *DevPathsModel {
 	home, _ := os.UserHomeDir()
 
-	labels := [devPathFieldCount]string{
-		filepath.Join(home, "projects/tidefly-plane"),
-		filepath.Join(home, "projects/tidefly-ui"),
+	defaults := [devPathFieldCount]string{
+		filepath.Join(home, "Desktop/development/tidefly/tidefly-plane"),
+		filepath.Join(home, "Desktop/development/tidefly/tidefly-ui"),
 	}
 
 	var inputs [devPathFieldCount]textinput.Model
 	for i := range inputs {
 		t := textinput.New()
-		t.Placeholder = labels[i]
 		t.CharLimit = 512
 		t.Prompt = ""
 		t.Width = 60
+		t.SetValue(defaults[i])
 		inputs[i] = t
 	}
 	inputs[devPathPlane].Focus()

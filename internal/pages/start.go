@@ -42,13 +42,14 @@ type startStep struct {
 }
 
 type StartModel struct {
-	cfg         SetupConfig
-	spinner     spinner.Model
-	steps       []startStep
-	current     int
-	finished    bool
-	hasError    bool
-	rollingBack bool
+	cfg            SetupConfig
+	spinner        spinner.Model
+	steps          []startStep
+	current        int
+	finished       bool
+	hasError       bool
+	rollingBack    bool
+	waitingForUser bool
 }
 
 func NewStart(cfg SetupConfig) *StartModel {
@@ -68,9 +69,7 @@ func buildSteps(cfg SetupConfig) []startStep {
 			{label: "Starting Postgres + Redis"},
 			{label: "Waiting for Postgres to be healthy"},
 			{label: "Waiting for Redis to be healthy"},
-			{label: "Starting backend (local)"},
-			{label: "Waiting for backend to be healthy"},
-			{label: "Starting UI (local)"},
+			{label: "Waiting for backend — press enter when ready"},
 		}
 	}
 	return []startStep{
@@ -251,10 +250,22 @@ func stepWriteEnv(cfg SetupConfig, rt, envFile string) error {
 		"TEMPLATES_DIR":  "/home/tidefly/templates",
 	}
 
+	if cfg.Environment == EnvDevelopmentLocal {
+		home, _ := os.UserHomeDir()
+		vars["TEMPLATES_DIR"] = filepath.Join(home, ".local", "share", "tidefly-plane", "templates")
+	}
+
 	if rt == "podman" {
 		vars["PODMAN_SOCK"] = cfg.SocketPath
 	} else {
 		vars["DOCKER_SOCK"] = cfg.SocketPath
+	}
+
+	// For dev-local, patch service hostnames to localhost
+	if cfg.Environment == EnvDevelopmentLocal {
+		if err := patchEnvForLocal(envFile); err != nil {
+			return fmt.Errorf("failed to patch env for local dev: %w", err)
+		}
 	}
 
 	if cfg.CaddyEnabled {
@@ -378,8 +389,8 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 				container = "tidefly_redis_dev"
 			}
 			err = stepWaitHealthy(rt, container, 30*time.Second)
-		case strings.HasPrefix(label, "Starting backend (local)"):
-			err = stepStartLocalBackend(cfg, envFile)
+		case strings.HasPrefix(label, "Waiting for backend — press enter"):
+			err = stepWaitLocalBackend()
 		case strings.HasPrefix(label, "Starting UI (local)"):
 			err = stepStartLocalUI(cfg)
 		case strings.HasPrefix(label, "Starting backend"):
@@ -419,6 +430,11 @@ func (m *StartModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.rollingBack = true
 			return m, m.rollback()
 		}
+		// Wait-for-user step: pause and prompt
+		if strings.HasPrefix(m.steps[msg.step].label, "Waiting for backend — press enter") {
+			m.waitingForUser = true
+			return m, nil
+		}
 		m.steps[msg.step].done = true
 		next := msg.step + 1
 		if next < len(m.steps) {
@@ -434,7 +450,18 @@ func (m *StartModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case tea.KeyMsg:
-		if key.Matches(msg, keys.Quit) && !m.rollingBack {
+		if m.waitingForUser && key.Matches(msg, keys.Enter) {
+			m.waitingForUser = false
+			m.steps[m.current].done = true
+			next := m.current + 1
+			if next < len(m.steps) {
+				m.current = next
+				return m, m.runStep(next)
+			}
+			m.finished = true
+			return m, navigate(PageAdmin, m.cfg)
+		}
+		if key.Matches(msg, keys.Quit) && !m.rollingBack && !m.waitingForUser {
 			return m, tea.Quit
 		}
 	}
@@ -473,6 +500,10 @@ func (m *StartModel) View() string {
 
 	var help string
 	switch {
+	case m.waitingForUser:
+		help = "\n" + styles.StatusWarn.Render("⟳ Infra is ready — start your backend now:") + "\n" +
+			styles.Help.Render("  cd "+m.cfg.DevPlanePath+" && air") + "\n\n" +
+			styles.StatusOK.Render("press enter when backend is up  •  q to quit")
 	case m.rollingBack:
 		help = "\n" + styles.StatusWarn.Render("⟳ Rolling back — stopping all containers...") + "\n" +
 			styles.Help.Render("please wait...")
@@ -597,7 +628,7 @@ func stepStartLocalBackend(cfg SetupConfig, envFile string) error {
 	envVars["APP_ENV"] = "development"
 	envVars["API_DOCS_ENABLED"] = boolTrue
 
-	cmd := exec.CommandContext(context.Background(), "go", "run", "./cmd/tidefly-plane")
+	cmd := exec.CommandContext(context.Background(), "air")
 	cmd.Dir = cfg.DevPlanePath
 	cmd.Env = os.Environ()
 	for k, v := range envVars {
@@ -615,9 +646,11 @@ func stepStartLocalBackend(cfg SetupConfig, envFile string) error {
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost:8181/api/v1/system/health", nil)
 		resp, e := http.DefaultClient.Do(req)
 		cancel()
-		if e == nil && resp.StatusCode == http.StatusOK {
+		if e == nil {
 			_ = resp.Body.Close()
-			return nil
+			if resp.StatusCode == http.StatusOK {
+				return nil
+			}
 		}
 		time.Sleep(2 * time.Second)
 	}
@@ -664,4 +697,45 @@ func loadEnvFile(path string) (map[string]string, error) {
 		result[strings.TrimSpace(k)] = strings.TrimSpace(v)
 	}
 	return result, nil
+}
+
+// stepWaitLocalBackend polls localhost:8181 until healthy or times out.
+func stepWaitLocalBackend() error {
+	deadline := time.Now().Add(3 * time.Minute)
+	for time.Now().Before(deadline) {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost:8181/api/v1/system/health", nil)
+		resp, e := http.DefaultClient.Do(req)
+		cancel()
+		if e == nil {
+			_ = resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return nil
+			}
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return fmt.Errorf("backend did not become healthy within 3 minutes")
+}
+
+// patchEnvForLocal rewrites DATABASE_URL, REDIS_URL, REDIS_ADDR, TEMPLATES_DIR in the env file
+// replacing Docker service hostnames with localhost for local dev.
+func patchEnvForLocal(envFile string) error {
+	home, _ := os.UserHomeDir()
+	localTemplatesDir := filepath.Join(home, ".local", "share", "tidefly-plane", "templates")
+
+	data, err := os.ReadFile(envFile)
+	if err != nil {
+		return err
+	}
+	content := string(data)
+	content = strings.ReplaceAll(content, "@postgres:", "@localhost:")
+	content = strings.ReplaceAll(content, "@redis:", "@localhost:")
+	content = strings.ReplaceAll(content, "REDIS_ADDR=redis:", "REDIS_ADDR=localhost:")
+	content = strings.ReplaceAll(content, "CADDY_ENABLED=true", "CADDY_ENABLED=false")
+
+	re := regexp.MustCompile(`(?m)^TEMPLATES_DIR=.*$`)
+	content = re.ReplaceAllString(content, "TEMPLATES_DIR="+localTemplatesDir)
+
+	return os.WriteFile(envFile, []byte(content), 0o600)
 }
