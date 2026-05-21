@@ -62,9 +62,8 @@ check_deps() {
 
 # ── Get latest version ────────────────────────────────────────────────────────
 get_latest_version() {
-    curl -fsSL "https://api.github.com/repos/${REPO}/releases" \
+    curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
         | grep '"tag_name"' \
-        | head -1 \
         | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
 }
 
