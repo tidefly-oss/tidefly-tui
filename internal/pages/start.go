@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -621,25 +620,6 @@ func stepStartLocalUI(cfg SetupConfig) error {
 	// Give it a moment to boot
 	time.Sleep(2 * time.Second)
 	return nil
-}
-
-// stepWaitLocalBackend polls localhost:8181 until healthy or times out.
-func stepWaitLocalBackend() error {
-	deadline := time.Now().Add(3 * time.Minute)
-	for time.Now().Before(deadline) {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost:8181/api/v1/system/health", nil)
-		resp, e := http.DefaultClient.Do(req)
-		cancel()
-		if e == nil {
-			_ = resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return nil
-			}
-		}
-		time.Sleep(2 * time.Second)
-	}
-	return fmt.Errorf("backend did not become healthy within 3 minutes")
 }
 
 // patchEnvForLocal rewrites DATABASE_URL, REDIS_URL, REDIS_ADDR, TEMPLATES_DIR in the env file
