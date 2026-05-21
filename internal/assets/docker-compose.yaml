@@ -59,7 +59,7 @@ services:
       redis:
         condition: service_healthy
       caddy:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD", "/app/healthcheck"]
       interval: 10s
