@@ -101,7 +101,6 @@ func (m *StartModel) composePaths() (cf, envFile string) {
 		cf = filepath.Join(baseDir, "docker-compose.yaml")
 		envFile = filepath.Join(baseDir, ".env")
 	} else {
-		// EnvDevelopmentLocal
 		cf = filepath.Join(baseDir, "docker-compose.dev.yaml")
 		envFile = filepath.Join(baseDir, ".env.dev")
 	}
@@ -147,7 +146,7 @@ func stepPullImages(rt string) error {
 		"tidefly/tidefly-ui:latest",
 		"tidefly/tidefly-caddy:latest",
 		"postgres:18-alpine",
-		"redis:8-alpine",
+		"valkey/valkey:9.0.4-alpine",
 	}
 	for _, img := range images {
 		cmd := exec.CommandContext(context.Background(), rt, "pull", img)
@@ -203,7 +202,6 @@ func stepWriteAssets(cfg SetupConfig, envFile string) error {
 		composeData = assets.ComposeProduction
 		composeName = "docker-compose.yaml"
 	} else {
-		// EnvDevelopmentLocal
 		composeData = assets.ComposeDev
 		composeName = "docker-compose.dev.yaml"
 	}
@@ -260,7 +258,6 @@ func stepWriteEnv(cfg SetupConfig, rt, envFile string) error {
 		vars["DOCKER_SOCK"] = cfg.SocketPath
 	}
 
-	// For dev-local, patch service hostnames to localhost
 	if cfg.Environment == EnvDevelopmentLocal {
 		if err := patchEnvForLocal(envFile); err != nil {
 			return fmt.Errorf("failed to patch env for local dev: %w", err)
@@ -383,7 +380,7 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 			}
 			err = stepWaitHealthy(rt, container, 90*time.Second)
 		case strings.HasPrefix(label, "Waiting for Redis"):
-			container := "tidefly_redis"
+			container := "tidefly_valkey"
 			if cfg.Environment == EnvDevelopmentLocal {
 				container = "tidefly_valkey_dev"
 			}
@@ -429,7 +426,6 @@ func (m *StartModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.rollingBack = true
 			return m, m.rollback()
 		}
-		// Wait-for-user step: pause and prompt
 		if strings.HasPrefix(m.steps[msg.step].label, "Waiting for backend — press enter") {
 			m.waitingForUser = true
 			return m, nil
@@ -617,7 +613,6 @@ func stepStartLocalUI(cfg SetupConfig) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start UI: %w (is pnpm installed?)", err)
 	}
-	// Give it a moment to boot
 	time.Sleep(2 * time.Second)
 	return nil
 }
