@@ -31,7 +31,7 @@ services:
       - tidefly_proxy
     environment:
       - CADDY_ADMIN=0.0.0.0:2019
-    command: caddy run --resume
+    command: ["run", "--config", "/dev/null", "--adapter", "caddyfile"]
     healthcheck:
       test: [ "CMD", "wget", "-qO-", "http://localhost:2019/config/" ]
       interval: 5s
