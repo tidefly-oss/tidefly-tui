@@ -110,8 +110,8 @@ services:
       start_period: 10s
 
   redis:
-    image: redis:8-alpine
-    container_name: tidefly_redis
+    image: valkey/valkey:9.0.4-alpine
+    container_name: tidefly_valkey
     labels:
       tidefly.internal: "true"
     restart: unless-stopped

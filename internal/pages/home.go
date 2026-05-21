@@ -67,7 +67,12 @@ func commandExistsWithCtx(_ context.Context, cmd string) bool {
 }
 
 func commandRunningWithCtx(ctx context.Context, cmd string, args ...string) bool {
-	return exec.CommandContext(ctx, cmd, args...).Run() == nil
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	c := exec.CommandContext(ctx, cmd, args...)
+	c.Stdout = nil
+	c.Stderr = nil
+	return c.Run() == nil
 }
 
 func (m *HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

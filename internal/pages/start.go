@@ -386,11 +386,11 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 		case strings.HasPrefix(label, "Waiting for Redis"):
 			container := "tidefly_redis"
 			if cfg.Environment == EnvDevelopmentLocal {
-				container = "tidefly_redis_dev"
+				container = "tidefly_valkey_dev"
 			}
 			err = stepWaitHealthy(rt, container, 30*time.Second)
 		case strings.HasPrefix(label, "Waiting for backend — press enter"):
-			err = stepWaitLocalBackend()
+			// intentional no-op: Update() handles this step via waitingForUser + Enter key
 		case strings.HasPrefix(label, "Starting UI (local)"):
 			err = stepStartLocalUI(cfg)
 		case strings.HasPrefix(label, "Starting backend"):
