@@ -1,8 +1,8 @@
 package pages
 
 import (
-	"context"
 	"fmt"
+	"net"
 	"os/exec"
 	"runtime"
 	"time"
@@ -11,7 +11,6 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-
 	"github.com/tidefly-oss/tidefly-tui/internal/styles"
 )
 
@@ -53,26 +52,24 @@ func detect() tea.Cmd {
 			OS:   runtime.GOOS,
 			Arch: runtime.GOARCH,
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		result.DockerFound = commandExistsWithCtx(ctx, "docker") && commandRunningWithCtx(ctx, "docker", "info")
-		result.PodmanFound = commandExistsWithCtx(ctx, "podman") && commandRunningWithCtx(ctx, "podman", "info")
+		result.DockerFound = runtimeAvailable("docker", "/var/run/docker.sock")
+		result.PodmanFound = runtimeAvailable("podman", "/run/podman/podman.sock")
 		return result
 	}
 }
 
-func commandExistsWithCtx(_ context.Context, cmd string) bool {
-	_, err := exec.LookPath(cmd)
-	return err == nil
-}
-
-func commandRunningWithCtx(ctx context.Context, cmd string, args ...string) bool {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	c := exec.CommandContext(ctx, cmd, args...)
-	c.Stdout = nil
-	c.Stderr = nil
-	return c.Run() == nil
+// runtimeAvailable checks if a binary exists and its socket is reachable.
+// Socket check is fast (<500ms) — avoids hanging on `docker info` when daemon is slow.
+func runtimeAvailable(binary, socketPath string) bool {
+	if _, err := exec.LookPath(binary); err != nil {
+		return false
+	}
+	conn, err := net.DialTimeout("unix", socketPath, 500*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }
 
 func (m *HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -81,14 +78,12 @@ func (m *HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.result = &msg
 		m.detected = true
 		return m, nil
-
 	case spinner.TickMsg:
 		if !m.detected {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
 		}
-
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, keys.Enter) && m.detected:
@@ -98,8 +93,7 @@ func (m *HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return NavigateTo{
 					Page:   PageRuntime,
 					Config: SetupConfig{},
-					// Pass detection via a separate message so NewRuntime gets it
-					Data: fmt.Sprintf("%v:%v", docker, podman),
+					Data:   fmt.Sprintf("%v:%v", docker, podman),
 				}
 			}
 		case key.Matches(msg, keys.Quit):
@@ -120,7 +114,6 @@ func (m *HomeModel) View() string {
 			),
 		)
 	}
-
 	r := m.result
 	osLabel := map[string]string{
 		"darwin":  "🍎 macOS",
@@ -130,7 +123,6 @@ func (m *HomeModel) View() string {
 	if osLabel == "" {
 		osLabel = "💻 " + r.OS
 	}
-
 	content := lipgloss.JoinVertical(
 		lipgloss.Left,
 		styles.InputLabel.Render("System"),
@@ -142,7 +134,6 @@ func (m *HomeModel) View() string {
 		"",
 		styles.Help.Render("press enter to continue  •  q to quit"),
 	)
-
 	return styles.Frame(
 		termWidth, termHeight, lipgloss.JoinVertical(
 			lipgloss.Left,
