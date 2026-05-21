@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os/exec"
@@ -64,7 +65,9 @@ func runtimeAvailable(binary, socketPath string) bool {
 	if _, err := exec.LookPath(binary); err != nil {
 		return false
 	}
-	conn, err := net.DialTimeout("unix", socketPath, 500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
 	if err != nil {
 		return false
 	}
