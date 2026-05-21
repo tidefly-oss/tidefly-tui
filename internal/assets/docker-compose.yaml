@@ -5,7 +5,6 @@ networks:
   tidefly_proxy:
     name: tidefly_proxy
     driver: bridge
-
 volumes:
   postgres_data:
     name: tidefly_postgres_data
@@ -13,7 +12,6 @@ volumes:
     name: tidefly_redis_data
   caddy_data:
     name: tidefly_caddy_data
-
 services:
   caddy:
     image: tidefly/tidefly-caddy:latest
@@ -31,14 +29,12 @@ services:
       - tidefly_proxy
     environment:
       - CADDY_ADMIN=0.0.0.0:2019
-    command: ["run", "--config", "/dev/null", "--adapter", "caddyfile"]
     healthcheck:
-      test: [ "CMD", "wget", "-qO-", "http://localhost:2019/config/" ]
+      test: ["CMD", "wget", "-qO-", "http://localhost:2019/config/"]
       interval: 5s
       timeout: 3s
       retries: 5
       start_period: 5s
-
   backend:
     image: tidefly/tidefly-plane:latest
     container_name: tidefly_backend
@@ -70,7 +66,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-
   ui:
     image: tidefly/tidefly-ui:latest
     container_name: tidefly_ui
@@ -85,7 +80,6 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-
   postgres:
     image: postgres:18-alpine
     container_name: tidefly_postgres
@@ -108,14 +102,13 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-
   redis:
     image: valkey/valkey:9.0.4-alpine
     container_name: tidefly_valkey
     labels:
       tidefly.internal: "true"
     restart: unless-stopped
-    command: [ "redis-server", "/usr/local/etc/redis/redis.conf" ]
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     env_file:
       - ./.env
     volumes:
