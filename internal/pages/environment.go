@@ -42,22 +42,20 @@ func NewEnvironment(cfg SetupConfig) *EnvironmentModel {
 func (m *EnvironmentModel) Init() tea.Cmd { return nil }
 
 func (m *EnvironmentModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch {
-		case key.Matches(msg, keys.Up):
+		case key.Matches(keyMsg, keys.Up):
 			if m.cursor > 0 {
 				m.cursor--
 			}
-		case key.Matches(msg, keys.Down):
+		case key.Matches(keyMsg, keys.Down):
 			if m.cursor < len(m.options)-1 {
 				m.cursor++
 			}
-		case key.Matches(msg, keys.Enter):
+		case key.Matches(keyMsg, keys.Enter):
 			chosen := m.options[m.cursor]
 			cfg := m.cfg
 			cfg.Environment = chosen.value
-
 			next := PageCaddy
 			if chosen.value == EnvDevelopmentLocal {
 				next = PageDevPaths
@@ -65,7 +63,7 @@ func (m *EnvironmentModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, func() tea.Msg {
 				return NavigateTo{Page: next, Config: cfg}
 			}
-		case key.Matches(msg, keys.Quit):
+		case key.Matches(keyMsg, keys.Quit):
 			return m, tea.Quit
 		}
 	}
@@ -79,7 +77,6 @@ func (m *EnvironmentModel) View() string {
 		styles.Subtitle.Render("How do you want to run Tidefly?"),
 		"",
 	)
-
 	list := ""
 	for i, opt := range m.options {
 		if i == m.cursor {
@@ -91,9 +88,7 @@ func (m *EnvironmentModel) View() string {
 				lipgloss.NewStyle().Foreground(styles.Muted).PaddingLeft(4).Render(opt.desc) + "\n\n"
 		}
 	}
-
 	help := styles.Help.Render("↑/↓ select  •  enter confirm  •  q quit")
-
 	return styles.Frame(
 		termWidth, termHeight, lipgloss.JoinVertical(
 			lipgloss.Left,
