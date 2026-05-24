@@ -244,12 +244,6 @@ func stepWriteEnv(cfg SetupConfig, rt, envFile string) error {
 	vars := map[string]string{
 		"RUNTIME_TYPE":   rt,
 		"RUNTIME_SOCKET": cfg.SocketPath,
-		"TEMPLATES_DIR":  "/home/tidefly/templates",
-	}
-
-	if cfg.Environment == EnvDevelopmentLocal {
-		home, _ := os.UserHomeDir()
-		vars["TEMPLATES_DIR"] = filepath.Join(home, ".local", "share", "tidefly-plane", "templates")
 	}
 
 	if rt == "podman" {
@@ -617,12 +611,9 @@ func stepStartLocalUI(cfg SetupConfig) error {
 	return nil
 }
 
-// patchEnvForLocal rewrites DATABASE_URL, REDIS_URL, REDIS_ADDR, TEMPLATES_DIR in the env file
+// patchEnvForLocal rewrites DATABASE_URL, REDIS_URL, REDIS_ADDR in the env file
 // replacing Docker service hostnames with localhost for local dev.
 func patchEnvForLocal(envFile string) error {
-	home, _ := os.UserHomeDir()
-	localTemplatesDir := filepath.Join(home, ".local", "share", "tidefly-plane", "templates")
-
 	data, err := os.ReadFile(envFile)
 	if err != nil {
 		return err
@@ -632,9 +623,6 @@ func patchEnvForLocal(envFile string) error {
 	content = strings.ReplaceAll(content, "@redis:", "@localhost:")
 	content = strings.ReplaceAll(content, "REDIS_ADDR=redis:", "REDIS_ADDR=localhost:")
 	content = strings.ReplaceAll(content, "CADDY_ENABLED=true", "CADDY_ENABLED=false")
-
-	re := regexp.MustCompile(`(?m)^TEMPLATES_DIR=.*$`)
-	content = re.ReplaceAllString(content, "TEMPLATES_DIR="+localTemplatesDir)
 
 	return os.WriteFile(envFile, []byte(content), 0o600)
 }

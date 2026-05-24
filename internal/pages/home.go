@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"runtime"
 	"time"
@@ -63,6 +64,9 @@ func detect() tea.Cmd {
 // Socket check is fast (<500ms) — avoids hanging on `docker info` when daemon is slow.
 func runtimeAvailable(binary, socketPath string) bool {
 	if _, err := exec.LookPath(binary); err != nil {
+		return false
+	}
+	if _, err := os.Stat(socketPath); err != nil {
 		return false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
