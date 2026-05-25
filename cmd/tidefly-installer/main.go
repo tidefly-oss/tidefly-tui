@@ -72,8 +72,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.current = pages.NewDevPaths(m.cfg)
 		case pages.PageCaddy:
 			m.current = pages.NewCaddy(m.cfg)
-		case pages.PageSMTP:
-			m.current = pages.NewSMTP(m.cfg)
 		case pages.PageStart:
 			m.current = pages.NewStart(m.cfg)
 		case pages.PageAdmin:
@@ -114,25 +112,6 @@ func mergeConfig(dst *pages.SetupConfig, src pages.SetupConfig) {
 		dst.CaddyEmail = src.CaddyEmail
 	}
 	dst.CaddyStaging = src.CaddyStaging
-	dst.SMTPEnabled = src.SMTPEnabled
-	if src.SMTPHost != "" {
-		dst.SMTPHost = src.SMTPHost
-	}
-	if src.SMTPPort != "" {
-		dst.SMTPPort = src.SMTPPort
-	}
-	if src.SMTPUser != "" {
-		dst.SMTPUser = src.SMTPUser
-	}
-	if src.SMTPPassword != "" {
-		dst.SMTPPassword = src.SMTPPassword
-	}
-	if src.SMTPFrom != "" {
-		dst.SMTPFrom = src.SMTPFrom
-	}
-	if src.SMTPTLS != "" {
-		dst.SMTPTLS = src.SMTPTLS
-	}
 	if src.DevPlanePath != "" {
 		dst.DevPlanePath = src.DevPlanePath
 	}

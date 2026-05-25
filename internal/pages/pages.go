@@ -24,7 +24,6 @@ const (
 	PageEnvironment
 	PageDevPaths
 	PageCaddy
-	PageSMTP
 	PageExtras
 	PageStart
 	PageAdmin
@@ -38,26 +37,16 @@ type NavigateTo struct {
 }
 
 type SetupConfig struct {
-	Runtime     string
-	SocketPath  string
-	Environment string
-
+	Runtime      string
+	SocketPath   string
+	Environment  string
 	DevPlanePath string
 	DevUIPath    string
-
 	CaddyEnabled bool
 	CaddyLater   bool
 	CaddyDomain  string
 	CaddyEmail   string
 	CaddyStaging bool
-
-	SMTPEnabled  bool
-	SMTPHost     string
-	SMTPPort     string
-	SMTPUser     string
-	SMTPPassword string
-	SMTPFrom     string
-	SMTPTLS      string
 }
 
 var (
