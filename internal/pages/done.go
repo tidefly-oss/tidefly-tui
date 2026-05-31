@@ -29,6 +29,17 @@ func (m *DoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func dashboardURL(cfg SetupConfig) string {
+	switch {
+	case cfg.CaddyEnabled && cfg.CaddyDomain != "":
+		return "https://dashboard." + cfg.CaddyDomain
+	case cfg.Environment == EnvDevelopmentLocal:
+		return "http://localhost:5173"
+	default:
+		return "http://localhost:3000"
+	}
+}
+
 func (m *DoneModel) View() string {
 	cfg := m.cfg
 
@@ -43,15 +54,7 @@ func (m *DoneModel) View() string {
 		"",
 	)
 
-	var primaryURL string
-	switch {
-	case cfg.CaddyEnabled && cfg.CaddyDomain != "":
-		primaryURL = "https://tidefly." + cfg.CaddyDomain
-	case cfg.Environment == EnvDevelopmentLocal:
-		primaryURL = "http://localhost:5173"
-	default:
-		primaryURL = "http://localhost:3000"
-	}
+	primaryURL := dashboardURL(cfg)
 
 	access := lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -61,7 +64,7 @@ func (m *DoneModel) View() string {
 		"",
 	)
 
-	links := ""
+	var links string
 	switch {
 	case cfg.Environment == EnvDevelopmentLocal:
 		links = lipgloss.JoinVertical(
@@ -72,15 +75,23 @@ func (m *DoneModel) View() string {
 			styles.Help.Render("  Terminal 2 →  cd "+cfg.DevUIPath+" && pnpm dev"),
 			"",
 			styles.Help.Render(fmt.Sprintf("  API     → http://localhost:%s", backendPort)),
-			styles.Help.Render(fmt.Sprintf("  Swagger → http://localhost:%s/docs", backendPort)),
+			styles.Help.Render(fmt.Sprintf("  Docs    → http://localhost:%s/docs", backendPort)),
 			styles.Help.Render("  UI      → http://localhost:5173"),
 		)
 	case cfg.CaddyEnabled && cfg.CaddyDomain != "":
 		links = lipgloss.JoinVertical(
 			lipgloss.Left,
 			styles.InputLabel.Render("Services:"),
-			styles.Help.Render(fmt.Sprintf("  Dashboard → https://tidefly.%s", cfg.CaddyDomain)),
-			styles.Help.Render(fmt.Sprintf("  API       → https://api.%s", cfg.CaddyDomain)),
+			styles.Help.Render(fmt.Sprintf("  Dashboard → https://dashboard.%s", cfg.CaddyDomain)),
+			styles.Help.Render(fmt.Sprintf("  API Docs  → https://dashboard.%s/docs", cfg.CaddyDomain)),
+		)
+	default:
+		links = lipgloss.JoinVertical(
+			lipgloss.Left,
+			styles.InputLabel.Render("Services:"),
+			styles.Help.Render("  Dashboard → http://localhost:3000"),
+			styles.Help.Render(fmt.Sprintf("  API       → http://localhost:%s", backendPort)),
+			styles.Help.Render(fmt.Sprintf("  API Docs  → http://localhost:%s/docs", backendPort)),
 		)
 	}
 
