@@ -9,25 +9,27 @@ import (
 	"strings"
 )
 
+const (
+	pkgFail2ban = "fail2ban"
+	pkgCrowdSec = "crowdsec"
+)
+
 // stepInstallCrowdSec installs CrowdSec, adds standard collections,
 // registers the Caddy bouncer and writes the API key to the env file.
 func stepInstallCrowdSec(_ SetupConfig, envFile string) error {
-	if runtime.GOOS != "linux" {
+	if runtime.GOOS != OSLinux {
 		return fmt.Errorf("CrowdSec install is only supported on Linux")
 	}
 
 	ctx := context.Background()
 
-	// Install CrowdSec
 	installScript := "curl -s https://install.crowdsec.net | sh"
 	if err := runCmd(ctx, "sh", "-c", installScript); err != nil {
-		return fmt.Errorf("crowdsec install: %w", err)
+		return fmt.Errorf("%s install: %w", pkgCrowdSec, err)
 	}
 
-	// Start + enable service
-	_ = runCmd(ctx, "systemctl", "enable", "--now", "crowdsec")
+	_ = runCmd(ctx, "systemctl", "enable", "--now", pkgCrowdSec)
 
-	// Add standard collections
 	collections := []string{
 		"crowdsecurity/linux",
 		"crowdsecurity/caddy",
@@ -36,12 +38,10 @@ func stepInstallCrowdSec(_ SetupConfig, envFile string) error {
 	}
 	for _, col := range collections {
 		if err := runCmd(ctx, "cscli", "collections", "install", col); err != nil {
-			// non-fatal — log and continue
-			_ = err
+			_ = err // non-fatal
 		}
 	}
 
-	// Register Caddy bouncer and capture API key
 	out, err := runCmdOutput(ctx, "cscli", "bouncers", "add", "caddy-bouncer", "--output", "raw")
 	if err != nil {
 		return fmt.Errorf("crowdsec bouncer registration: %w", err)
@@ -52,7 +52,6 @@ func stepInstallCrowdSec(_ SetupConfig, envFile string) error {
 		return fmt.Errorf("crowdsec: empty bouncer API key")
 	}
 
-	// Write key to .env so Caddy can pick it up
 	vars := map[string]string{
 		"CROWDSEC_API_KEY": apiKey,
 		"CROWDSEC_ENABLED": "true",
@@ -62,7 +61,7 @@ func stepInstallCrowdSec(_ SetupConfig, envFile string) error {
 
 // stepInstallFail2ban installs Fail2ban with default SSH jail.
 func stepInstallFail2ban() error {
-	if runtime.GOOS != "linux" {
+	if runtime.GOOS != OSLinux {
 		return fmt.Errorf("Fail2ban install is only supported on Linux")
 	}
 
@@ -73,20 +72,19 @@ func stepInstallFail2ban() error {
 	switch distro {
 	case "debian", "ubuntu":
 		_ = runCmd(ctx, "apt-get", "update", "-qq")
-		installCmd = []string{"apt-get", "install", "-y", "-qq", "fail2ban"}
+		installCmd = []string{"apt-get", "install", "-y", "-qq", pkgFail2ban}
 	case "fedora", "rhel", "centos", "rocky", "almalinux":
-		installCmd = []string{"dnf", "install", "-y", "fail2ban"}
+		installCmd = []string{"dnf", "install", "-y", pkgFail2ban}
 	case "arch":
-		installCmd = []string{"pacman", "-Sy", "--noconfirm", "fail2ban"}
+		installCmd = []string{"pacman", "-Sy", "--noconfirm", pkgFail2ban}
 	default:
-		return fmt.Errorf("unsupported distro for fail2ban: %s", distro)
+		return fmt.Errorf("unsupported distro for %s: %s", pkgFail2ban, distro)
 	}
 
 	if err := runCmd(ctx, installCmd[0], installCmd[1:]...); err != nil {
-		return fmt.Errorf("fail2ban install: %w", err)
+		return fmt.Errorf("%s install: %w", pkgFail2ban, err)
 	}
 
-	// Write default jail.local with SSH protection
 	jailLocal := `[DEFAULT]
 bantime  = 1h
 findtime = 10m
@@ -100,12 +98,11 @@ logpath = %(sshd_log)s
 maxretry = 3
 `
 	if err := os.WriteFile("/etc/fail2ban/jail.local", []byte(jailLocal), 0o644); err != nil {
-		return fmt.Errorf("fail2ban jail.local: %w", err)
+		return fmt.Errorf("%s jail.local: %w", pkgFail2ban, err)
 	}
 
-	// Enable + start
-	if err := runCmd(ctx, "systemctl", "enable", "--now", "fail2ban"); err != nil {
-		return fmt.Errorf("fail2ban start: %w", err)
+	if err := runCmd(ctx, "systemctl", "enable", "--now", pkgFail2ban); err != nil {
+		return fmt.Errorf("%s start: %w", pkgFail2ban, err)
 	}
 
 	return nil
