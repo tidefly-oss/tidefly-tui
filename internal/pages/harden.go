@@ -12,10 +12,17 @@ import (
 const (
 	pkgFail2ban = "fail2ban"
 	pkgCrowdSec = "crowdsec"
+
+	distroDebian    = "debian"
+	distroUbuntu    = "ubuntu"
+	distroFedora    = "fedora"
+	distroRHEL      = "rhel"
+	distroCentOS    = "centos"
+	distroRocky     = "rocky"
+	distroAlmaLinux = "almalinux"
+	distroArch      = "arch"
 )
 
-// stepInstallCrowdSec installs CrowdSec, adds standard collections,
-// registers the Caddy bouncer and writes the API key to the env file.
 func stepInstallCrowdSec(_ SetupConfig, envFile string) error {
 	if runtime.GOOS != OSLinux {
 		return fmt.Errorf("CrowdSec install is only supported on Linux")
@@ -24,20 +31,18 @@ func stepInstallCrowdSec(_ SetupConfig, envFile string) error {
 	ctx := context.Background()
 	distro := detectLinuxDistro()
 
-	// Add CrowdSec repository
 	repoScript := "curl -s https://install.crowdsec.net | sh"
 	if err := runCmd(ctx, "sh", "-c", repoScript); err != nil {
 		return fmt.Errorf("%s repo setup: %w", pkgCrowdSec, err)
 	}
 
-	// Install the package via distro package manager
 	switch distro {
-	case "debian", "ubuntu":
+	case distroDebian, distroUbuntu:
 		_ = runCmd(ctx, "apt-get", "update", "-qq")
 		if err := runCmd(ctx, "apt-get", "install", "-y", "-qq", pkgCrowdSec); err != nil {
 			return fmt.Errorf("%s install: %w", pkgCrowdSec, err)
 		}
-	case "fedora", "rhel", "centos", "rocky", "almalinux":
+	case distroFedora, distroRHEL, distroCentOS, distroRocky, distroAlmaLinux:
 		if err := runCmd(ctx, "dnf", "install", "-y", pkgCrowdSec); err != nil {
 			return fmt.Errorf("%s install: %w", pkgCrowdSec, err)
 		}
@@ -45,12 +50,10 @@ func stepInstallCrowdSec(_ SetupConfig, envFile string) error {
 		return fmt.Errorf("unsupported distro for %s: %s", pkgCrowdSec, distro)
 	}
 
-	// Enable + start service
 	if err := runCmd(ctx, "systemctl", "enable", "--now", pkgCrowdSec); err != nil {
 		return fmt.Errorf("%s service: %w", pkgCrowdSec, err)
 	}
 
-	// Add standard collections
 	collections := []string{
 		"crowdsecurity/linux",
 		"crowdsecurity/caddy",
@@ -58,10 +61,9 @@ func stepInstallCrowdSec(_ SetupConfig, envFile string) error {
 		"crowdsecurity/whitelist-good-actors",
 	}
 	for _, col := range collections {
-		_ = runCmd(ctx, "cscli", "collections", "install", col) // non-fatal
+		_ = runCmd(ctx, "cscli", "collections", "install", col)
 	}
 
-	// Register Caddy bouncer and capture API key
 	out, err := runCmdOutput(ctx, "cscli", "bouncers", "add", "caddy-bouncer", "--output", "raw")
 	if err != nil {
 		return fmt.Errorf("crowdsec bouncer registration: %w", err)
@@ -79,7 +81,6 @@ func stepInstallCrowdSec(_ SetupConfig, envFile string) error {
 	return writeEnvVars(envFile, vars)
 }
 
-// stepInstallFail2ban installs Fail2ban with default SSH jail.
 func stepInstallFail2ban() error {
 	if runtime.GOOS != OSLinux {
 		return fmt.Errorf("Fail2ban install is only supported on Linux")
@@ -90,12 +91,12 @@ func stepInstallFail2ban() error {
 
 	var installCmd []string
 	switch distro {
-	case "debian", "ubuntu":
+	case distroDebian, distroUbuntu:
 		_ = runCmd(ctx, "apt-get", "update", "-qq")
 		installCmd = []string{"apt-get", "install", "-y", "-qq", pkgFail2ban}
-	case "fedora", "rhel", "centos", "rocky", "almalinux":
+	case distroFedora, distroRHEL, distroCentOS, distroRocky, distroAlmaLinux:
 		installCmd = []string{"dnf", "install", "-y", pkgFail2ban}
-	case "arch":
+	case distroArch:
 		installCmd = []string{"pacman", "-Sy", "--noconfirm", pkgFail2ban}
 	default:
 		return fmt.Errorf("unsupported distro for %s: %s", pkgFail2ban, distro)
@@ -128,8 +129,6 @@ maxretry = 3
 	return nil
 }
 
-// ── helpers ───────────────────────────────────────────────────────────────────
-
 func runCmd(ctx context.Context, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdout = os.Stdout
@@ -150,22 +149,22 @@ func detectLinuxDistro() string {
 	}
 	content := strings.ToLower(string(data))
 	switch {
-	case strings.Contains(content, "ubuntu"):
-		return "ubuntu"
-	case strings.Contains(content, "debian"):
-		return "debian"
-	case strings.Contains(content, "fedora"):
-		return "fedora"
-	case strings.Contains(content, "rhel"), strings.Contains(content, "red hat"):
-		return "rhel"
-	case strings.Contains(content, "centos"):
-		return "centos"
-	case strings.Contains(content, "rocky"):
-		return "rocky"
-	case strings.Contains(content, "almalinux"):
-		return "almalinux"
-	case strings.Contains(content, "arch"):
-		return "arch"
+	case strings.Contains(content, distroUbuntu):
+		return distroUbuntu
+	case strings.Contains(content, distroDebian):
+		return distroDebian
+	case strings.Contains(content, distroFedora):
+		return distroFedora
+	case strings.Contains(content, distroRHEL), strings.Contains(content, "red hat"):
+		return distroRHEL
+	case strings.Contains(content, distroCentOS):
+		return distroCentOS
+	case strings.Contains(content, distroRocky):
+		return distroRocky
+	case strings.Contains(content, distroAlmaLinux):
+		return distroAlmaLinux
+	case strings.Contains(content, distroArch):
+		return distroArch
 	default:
 		return "unknown"
 	}
