@@ -45,11 +45,17 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ready = true
 		pages.SetSize(ws.Width, ws.Height)
 	}
+
 	if !m.ready {
-		var cmd tea.Cmd
-		m.spinner, cmd = m.spinner.Update(msg)
-		return m, cmd
+		// Pass messages to both spinner and current page before window size is known.
+		// This ensures DetectionResult is processed even if WindowSizeMsg is delayed.
+		var spinCmd tea.Cmd
+		m.spinner, spinCmd = m.spinner.Update(msg)
+		var pageCmd tea.Cmd
+		m.current, pageCmd = m.current.Update(msg)
+		return m, tea.Batch(spinCmd, pageCmd)
 	}
+
 	if nav, ok := msg.(pages.NavigateTo); ok {
 		mergeConfig(&m.cfg, nav.Config)
 		switch nav.Page {
@@ -72,17 +78,18 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.current = pages.NewDevPaths(m.cfg)
 		case pages.PageCaddy:
 			m.current = pages.NewCaddy(m.cfg)
+		case pages.PageExtras:
+			m.current = pages.NewExtras(m.cfg)
 		case pages.PageStart:
 			m.current = pages.NewStart(m.cfg)
 		case pages.PageAdmin:
 			m.current = pages.NewAdmin()
 		case pages.PageDone:
 			m.current = pages.NewDone(m.cfg)
-		case pages.PageExtras:
-			m.current = pages.NewExtras(m.cfg)
 		}
 		return m, m.current.Init()
 	}
+
 	var cmd tea.Cmd
 	m.current, cmd = m.current.Update(msg)
 	return m, cmd
