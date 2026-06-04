@@ -22,14 +22,35 @@ func stepInstallCrowdSec(_ SetupConfig, envFile string) error {
 	}
 
 	ctx := context.Background()
+	distro := detectLinuxDistro()
 
-	installScript := "curl -s https://install.crowdsec.net | sh"
-	if err := runCmd(ctx, "sh", "-c", installScript); err != nil {
-		return fmt.Errorf("%s install: %w", pkgCrowdSec, err)
+	// Add CrowdSec repository
+	repoScript := "curl -s https://install.crowdsec.net | sh"
+	if err := runCmd(ctx, "sh", "-c", repoScript); err != nil {
+		return fmt.Errorf("%s repo setup: %w", pkgCrowdSec, err)
 	}
 
-	_ = runCmd(ctx, "systemctl", "enable", "--now", pkgCrowdSec)
+	// Install the package via distro package manager
+	switch distro {
+	case "debian", "ubuntu":
+		_ = runCmd(ctx, "apt-get", "update", "-qq")
+		if err := runCmd(ctx, "apt-get", "install", "-y", "-qq", pkgCrowdSec); err != nil {
+			return fmt.Errorf("%s install: %w", pkgCrowdSec, err)
+		}
+	case "fedora", "rhel", "centos", "rocky", "almalinux":
+		if err := runCmd(ctx, "dnf", "install", "-y", pkgCrowdSec); err != nil {
+			return fmt.Errorf("%s install: %w", pkgCrowdSec, err)
+		}
+	default:
+		return fmt.Errorf("unsupported distro for %s: %s", pkgCrowdSec, distro)
+	}
 
+	// Enable + start service
+	if err := runCmd(ctx, "systemctl", "enable", "--now", pkgCrowdSec); err != nil {
+		return fmt.Errorf("%s service: %w", pkgCrowdSec, err)
+	}
+
+	// Add standard collections
 	collections := []string{
 		"crowdsecurity/linux",
 		"crowdsecurity/caddy",
@@ -37,11 +58,10 @@ func stepInstallCrowdSec(_ SetupConfig, envFile string) error {
 		"crowdsecurity/whitelist-good-actors",
 	}
 	for _, col := range collections {
-		if err := runCmd(ctx, "cscli", "collections", "install", col); err != nil {
-			_ = err // non-fatal
-		}
+		_ = runCmd(ctx, "cscli", "collections", "install", col) // non-fatal
 	}
 
+	// Register Caddy bouncer and capture API key
 	out, err := runCmdOutput(ctx, "cscli", "bouncers", "add", "caddy-bouncer", "--output", "raw")
 	if err != nil {
 		return fmt.Errorf("crowdsec bouncer registration: %w", err)
