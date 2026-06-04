@@ -64,6 +64,9 @@ func stepInstallCrowdSec(_ SetupConfig, envFile string) error {
 		_ = runCmd(ctx, "cscli", "collections", "install", col)
 	}
 
+	// Delete existing bouncer if present (idempotent reinstall)
+	_ = runCmd(ctx, "cscli", "bouncers", "delete", "caddy-bouncer")
+
 	out, err := runCmdOutput(ctx, "cscli", "bouncers", "add", "caddy-bouncer", "--output", "raw")
 	if err != nil {
 		return fmt.Errorf("crowdsec bouncer registration: %w", err)
@@ -130,14 +133,10 @@ maxretry = 3
 }
 
 func runCmd(ctx context.Context, name string, args ...string) error {
-	var buf strings.Builder
 	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Stdout = &buf
-	cmd.Stderr = &buf
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s: %w", strings.TrimSpace(buf.String()), err)
-	}
-	return nil
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 func runCmdOutput(ctx context.Context, name string, args ...string) (string, error) {
