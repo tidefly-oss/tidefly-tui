@@ -71,18 +71,27 @@ func buildSteps(cfg SetupConfig) []startStep {
 			{label: "Waiting for backend — press enter when ready"},
 		}
 	}
-	return []startStep{
+	steps := []startStep{
 		{label: "Pulling Docker images"},
 		{label: "Generating secrets"},
 		{label: "Writing assets"},
 		{label: "Writing environment config"},
 		{label: "Cleaning up existing containers"},
-		{label: "Starting core services (Postgres, Redis, Caddy)"},
-		{label: "Waiting for Postgres to be healthy"},
-		{label: "Waiting for Redis to be healthy"},
-		{label: "Starting backend + dashboard"},
-		{label: "Waiting for backend to be healthy"},
 	}
+	if cfg.HardenCrowdSec {
+		steps = append(steps, startStep{label: "Installing CrowdSec"})
+	}
+	if cfg.HardenFail2ban {
+		steps = append(steps, startStep{label: "Installing Fail2ban"})
+	}
+	steps = append(steps,
+		startStep{label: "Starting core services (Postgres, Redis, Caddy)"},
+		startStep{label: "Waiting for Postgres to be healthy"},
+		startStep{label: "Waiting for Redis to be healthy"},
+		startStep{label: "Starting backend + dashboard"},
+		startStep{label: "Waiting for backend to be healthy"},
+	)
+	return steps
 }
 
 func (m *StartModel) Init() tea.Cmd {
@@ -360,6 +369,10 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 			err = stepWriteEnv(cfg, rt, envFile)
 		case strings.HasPrefix(label, "Cleaning up"):
 			err = stepCleanup(cfg, rt, cf, envFile)
+		case strings.HasPrefix(label, "Installing CrowdSec"):
+			err = stepInstallCrowdSec(cfg, envFile)
+		case strings.HasPrefix(label, "Installing Fail2ban"):
+			err = stepInstallFail2ban()
 		case strings.HasPrefix(label, "Starting Postgres + Redis"):
 			err = stepStartInfra(cfg, rt, cf, envFile)
 		case strings.HasPrefix(label, "Starting core"):

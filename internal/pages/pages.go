@@ -1,3 +1,4 @@
+// Package pages contains the TUI pages for the Tidefly installer.
 package pages
 
 import tea "github.com/charmbracelet/bubbletea"
@@ -47,6 +48,10 @@ type SetupConfig struct {
 	CaddyDomain  string
 	CaddyEmail   string
 	CaddyStaging bool
+	// Security hardening
+	HardenCrowdSec bool
+	HardenFail2ban bool
+	HardenCoraza   bool
 }
 
 var (

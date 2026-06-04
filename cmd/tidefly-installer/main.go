@@ -79,6 +79,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case pages.PageDone:
 			m.current = pages.NewDone(m.cfg)
 		case pages.PageExtras:
+			m.current = pages.NewExtras(m.cfg)
 		}
 		return m, m.current.Init()
 	}
@@ -118,6 +119,9 @@ func mergeConfig(dst *pages.SetupConfig, src pages.SetupConfig) {
 	if src.DevUIPath != "" {
 		dst.DevUIPath = src.DevUIPath
 	}
+	dst.HardenCrowdSec = src.HardenCrowdSec
+	dst.HardenFail2ban = src.HardenFail2ban
+	dst.HardenCoraza = src.HardenCoraza
 }
 
 func runUninstall() {

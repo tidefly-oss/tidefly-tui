@@ -9,6 +9,7 @@ type keyMap struct {
 	Back  key.Binding
 	Quit  key.Binding
 	Tab   key.Binding
+	Space key.Binding
 }
 
 var keys = keyMap{
@@ -18,4 +19,5 @@ var keys = keyMap{
 	Back:  key.NewBinding(key.WithKeys("esc", "backspace")),
 	Quit:  key.NewBinding(key.WithKeys("q", "ctrl+c")),
 	Tab:   key.NewBinding(key.WithKeys("tab")),
+	Space: key.NewBinding(key.WithKeys(" ")),
 }

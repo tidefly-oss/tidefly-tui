@@ -60,7 +60,7 @@ func (m *CaddyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cfg.CaddyEnabled = false
 					cfg := m.cfg
 					return m, func() tea.Msg {
-						return NavigateTo{Page: PageStart, Config: cfg}
+						return NavigateTo{Page: PageExtras, Config: cfg}
 					}
 				}
 				m.step = caddyStepDomain
@@ -121,7 +121,7 @@ func (m *CaddyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cfg.CaddyStaging = m.cursor == 0
 				cfg := m.cfg
 				return m, func() tea.Msg {
-					return NavigateTo{Page: PageStart, Config: cfg}
+					return NavigateTo{Page: PageExtras, Config: cfg}
 				}
 			case key.Matches(keyMsg, keys.Quit):
 				return m, tea.Quit

@@ -172,8 +172,8 @@ func (m *AdminModel) View() string {
 		if adminField(i) == m.focused {
 			lbl = lbl.Foreground(styles.Primary)
 		}
-		form.WriteString(lbl.Render(adminLabels[i]) + "\n")
-		form.WriteString(input.View() + "\n\n")
+		fmt.Fprintf(&form, "%s\n", lbl.Render(adminLabels[i]))
+		fmt.Fprintf(&form, "%s\n\n", input.View())
 	}
 
 	errMsg := ""
