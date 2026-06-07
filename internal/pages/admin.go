@@ -37,10 +37,11 @@ type AdminModel struct {
 	focused adminField
 	err     string
 	loading bool
+	cfg     SetupConfig
 }
 
-func NewAdmin() *AdminModel {
-	m := &AdminModel{}
+func NewAdmin(cfg SetupConfig) *AdminModel {
+	m := &AdminModel{cfg: cfg}
 	for i := range m.inputs {
 		t := textinput.New()
 		t.Placeholder = adminLabels[i]
@@ -65,8 +66,8 @@ func (m *AdminModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AdminCreated:
 		m.loading = false
-		return m, func() tea.Msg { return NavigateTo{Page: PageDone} }
-
+		cfg := m.cfg
+		return m, func() tea.Msg { return NavigateTo{Page: PageDone, Config: cfg} }
 	case AdminError:
 		m.loading = false
 		m.err = msg.Msg

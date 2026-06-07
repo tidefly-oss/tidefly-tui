@@ -83,7 +83,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case pages.PageStart:
 			m.current = pages.NewStart(m.cfg)
 		case pages.PageAdmin:
-			m.current = pages.NewAdmin()
+			m.current = pages.NewAdmin(m.cfg)
 		case pages.PageDone:
 			m.current = pages.NewDone(m.cfg)
 		}
