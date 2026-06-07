@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -47,8 +49,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if !m.ready {
-		// Pass messages to both spinner and current page before window size is known.
-		// This ensures DetectionResult is processed even if WindowSizeMsg is delayed.
 		var spinCmd tea.Cmd
 		m.spinner, spinCmd = m.spinner.Update(msg)
 		var pageCmd tea.Cmd
@@ -131,6 +131,8 @@ func mergeConfig(dst *pages.SetupConfig, src pages.SetupConfig) {
 	dst.HardenCoraza = src.HardenCoraza
 }
 
+// ── Uninstall ─────────────────────────────────────────────────────────────────
+
 func runUninstall() {
 	baseDir := env.PlaneDir()
 	ctx := context.Background()
@@ -144,13 +146,10 @@ func runUninstall() {
 
 	logInfo := func(msg string) { fmt.Printf("\033[34m[tidefly]\033[0m %s\n", msg) }
 	logOK := func(msg string) { fmt.Printf("\033[32m[tidefly]\033[0m %s\n", msg) }
+	logWarn := func(msg string) { fmt.Printf("\033[33m[tidefly]\033[0m %s\n", msg) }
 
-	logInfo("Stopping and removing containers...")
-
-	for _, name := range []string{"tidefly_ui", "tidefly_ui_dev"} {
-		_ = exec.CommandContext(ctx, rt, "rm", "-f", name).Run()
-	}
-
+	// ── 1. Compose down (core services + volumes) ─────────────────────────────
+	logInfo("Stopping core services via compose...")
 	for _, cf := range []string{
 		filepath.Join(baseDir, "docker-compose.yaml"),
 		filepath.Join(baseDir, "docker-compose.dev.yaml"),
@@ -163,14 +162,33 @@ func runUninstall() {
 		}
 	}
 
-	logInfo("Removing networks...")
-	for _, network := range []string{
-		"tidefly_internal", "tidefly_proxy",
-		"tidefly_internal_dev", "tidefly_proxy_dev",
-	} {
-		_ = exec.CommandContext(ctx, rt, "network", "rm", network).Run()
+	// ── 2. Remove all user containers with tidefly labels ────────────────────
+	logInfo("Removing all Tidefly containers...")
+	containerIDs := listContainersByLabel(ctx, rt, "tidefly.service")
+	for _, id := range containerIDs {
+		_ = exec.CommandContext(ctx, rt, "rm", "-f", id).Run()
 	}
 
+	// ── 3. Remove all networks with tidefly_ prefix ───────────────────────────
+	logInfo("Removing all Tidefly networks...")
+	networks := listNetworksByPrefix(ctx, rt, "tidefly_")
+	for _, network := range networks {
+		if err := exec.CommandContext(ctx, rt, "network", "rm", network).Run(); err != nil {
+			logWarn(fmt.Sprintf("could not remove network %q: %v", network, err))
+		}
+	}
+
+	// ── 4. Remove Tidefly images ──────────────────────────────────────────────
+	logInfo("Removing Tidefly images...")
+	for _, img := range []string{
+		"tidefly/tidefly-plane:latest",
+		"tidefly/tidefly-ui:latest",
+		"tidefly/tidefly-caddy:latest",
+	} {
+		_ = exec.CommandContext(ctx, rt, "rmi", "-f", img).Run()
+	}
+
+	// ── 5. Remove config directory ────────────────────────────────────────────
 	logInfo("Removing config directory...")
 	if err := os.RemoveAll(baseDir); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "\033[31m[tidefly]\033[0m failed to remove %s: %v\n", baseDir, err)
@@ -180,10 +198,65 @@ func runUninstall() {
 	logOK("Uninstall complete — run tidefly-tui to install fresh.")
 }
 
+// listContainersByLabel returns container IDs that have a given label key.
+func listContainersByLabel(ctx context.Context, rt, label string) []string {
+	out, err := exec.CommandContext(ctx, rt, "ps", "-aq",
+		"--filter", "label="+label,
+		"--format", "{{.ID}}",
+	).Output()
+	if err != nil {
+		return nil
+	}
+	var ids []string
+	for _, id := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// listNetworksByPrefix returns all network names with the given prefix.
+func listNetworksByPrefix(ctx context.Context, rt, prefix string) []string {
+	out, err := exec.CommandContext(ctx, rt, "network", "ls",
+		"--format", `{"Name":"{{.Name}}"}`,
+	).Output()
+	if err != nil {
+		return nil
+	}
+	var networks []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" {
+			continue
+		}
+		var obj struct{ Name string }
+		if err := json.Unmarshal([]byte(line), &obj); err != nil {
+			continue
+		}
+		if strings.HasPrefix(obj.Name, prefix) {
+			networks = append(networks, obj.Name)
+		}
+	}
+	return networks
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "uninstall" {
-		runUninstall()
-		return
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "uninstall":
+			runUninstall()
+			return
+		case "help", "--help", "-h":
+			fmt.Println("Usage: tidefly-tui [command]")
+			fmt.Println("")
+			fmt.Println("Commands:")
+			fmt.Println("  (none)      Run the setup wizard")
+			fmt.Println("  uninstall   Remove all Tidefly containers, networks, volumes and config")
+			fmt.Println("  help        Show this help message")
+			return
+		}
 	}
 
 	p := tea.NewProgram(
