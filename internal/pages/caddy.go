@@ -138,7 +138,7 @@ func (m *CaddyModel) View() string {
 		header := lipgloss.JoinVertical(
 			lipgloss.Left,
 			styles.Title.Render("Caddy / SSL"),
-			styles.Subtitle.Render("Automatically expose services with HTTPS via Let's Encrypt?"),
+			styles.Subtitle.Render("Automatically expose manifest with HTTPS via Let's Encrypt?"),
 			"",
 			lipgloss.NewStyle().Foreground(styles.Muted).Render(
 				"  Requires: DNS wildcard *.yourdomain.com → server IP\n"+

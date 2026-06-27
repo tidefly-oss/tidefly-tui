@@ -6,8 +6,6 @@ networks:
 volumes:
   postgres_data:
     name: tidefly_postgres_data_dev
-  redis_data:
-    name: tidefly_redis_data_dev
 
 services:
   postgres:
@@ -32,37 +30,5 @@ services:
         ]
       interval: 5s
       timeout: 5s
-      retries: 5
-      start_period: 10s
-
-  redis:
-    image: valkey/valkey:9.0.4-alpine
-    container_name: tidefly_valkey_dev
-    labels:
-      tidefly.internal: "true"
-    restart: "no"
-    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
-    env_file:
-      - ./.env.dev
-    ports:
-      - "127.0.0.1:6379:6379"
-    volumes:
-      - redis_data:/data
-      - ./redis:/usr/local/etc/redis
-    networks:
-      - tidefly_internal
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "redis-cli",
-          "--user",
-          "tidefly",
-          "--pass",
-          "${REDIS_PASSWORD}",
-          "ping",
-        ]
-      interval: 5s
-      timeout: 3s
       retries: 5
       start_period: 10s

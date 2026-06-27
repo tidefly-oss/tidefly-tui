@@ -148,8 +148,8 @@ func runUninstall() {
 	logOK := func(msg string) { fmt.Printf("\033[32m[tidefly]\033[0m %s\n", msg) }
 	logWarn := func(msg string) { fmt.Printf("\033[33m[tidefly]\033[0m %s\n", msg) }
 
-	// ── 1. Compose down (core services + volumes) ─────────────────────────────
-	logInfo("Stopping core services via compose...")
+	// ── 1. Compose down (core manifest + volumes) ─────────────────────────────
+	logInfo("Stopping core manifest via compose...")
 	for _, cf := range []string{
 		filepath.Join(baseDir, "docker-compose.yaml"),
 		filepath.Join(baseDir, "docker-compose.dev.yaml"),

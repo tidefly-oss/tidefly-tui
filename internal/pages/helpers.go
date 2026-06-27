@@ -15,7 +15,6 @@ const (
 	boolFalse = "false"
 
 	svcPostgres = "postgres"
-	svcRedis    = "redis"
 )
 
 func navigate(page Page, cfg SetupConfig) tea.Cmd {
@@ -39,20 +38,13 @@ func generateSecrets(environment string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to generate postgres password: %w", err)
 	}
-	redisPass, err := randomBase64(48)
-	if err != nil {
-		return "", fmt.Errorf("failed to generate redis password: %w", err)
-	}
 
 	pgPass = sanitizePassword(pgPass)
-	redisPass = sanitizePassword(redisPass)
 
 	isDev := environment == EnvDevelopmentLocal
 	dbHost := svcPostgres
-	redisHost := svcRedis
 	if isDev {
 		dbHost = "localhost"
-		redisHost = "localhost"
 	}
 	appEnv := "production"
 	apiDocs := boolFalse
@@ -76,12 +68,6 @@ DATABASE_URL=postgres://tidefly:%s@%s:5432/tidefly?sslmode=disable
 POSTGRES_USER=tidefly
 POSTGRES_PASSWORD=%s
 POSTGRES_DB=tidefly
-
-# ── Cache / Redis ────────────────────────────────────────────────────
-REDIS_URL=redis://tidefly:%s@%s:6379/0
-REDIS_ADDR=%s:6379
-REDIS_USER=tidefly
-REDIS_PASSWORD=%s
 
 # ── Auth ─────────────────────────────────────────────────────────────
 JWT_SECRET=%s
@@ -140,7 +126,6 @@ JOBS_CONCURRENCY=5
 `,
 		appEnv, appSecret, apiDocs, encKey,
 		pgPass, dbHost, pgPass,
-		redisPass, redisHost, redisHost, redisPass,
 		jwtSecret,
 	)
 

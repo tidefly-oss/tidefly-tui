@@ -65,9 +65,8 @@ func buildSteps(cfg SetupConfig) []startStep {
 			{label: "Writing assets"},
 			{label: "Writing environment config"},
 			{label: "Cleaning up existing containers"},
-			{label: "Starting Postgres + Redis"},
+			{label: "Starting Postgres"},
 			{label: "Waiting for Postgres to be healthy"},
-			{label: "Waiting for Redis to be healthy"},
 			{label: "Waiting for backend — press enter when ready"},
 		}
 	}
@@ -85,9 +84,8 @@ func buildSteps(cfg SetupConfig) []startStep {
 		steps = append(steps, startStep{label: "Installing Fail2ban"})
 	}
 	steps = append(steps,
-		startStep{label: "Starting core services (Postgres, Redis, Caddy)"},
+		startStep{label: "Starting core manifest (Postgres, Caddy)"},
 		startStep{label: "Waiting for Postgres to be healthy"},
-		startStep{label: "Waiting for Redis to be healthy"},
 		startStep{label: "Starting backend + dashboard"},
 		startStep{label: "Waiting for backend to be healthy"},
 	)
@@ -155,7 +153,6 @@ func stepPullImages(rt string) error {
 		"tidefly/tidefly-ui:latest",
 		"tidefly/tidefly-caddy:latest",
 		"postgres:18-alpine",
-		"valkey/valkey:9.0.4-alpine",
 	}
 	for _, img := range images {
 		cmd := exec.CommandContext(context.Background(), rt, "pull", img)
@@ -194,11 +191,10 @@ func stepGenerateSecrets(cfg SetupConfig, envFile string) (err error) {
 	if _, err := fmt.Fprint(f, secrets); err != nil {
 		return fmt.Errorf("failed to write secrets: %w", err)
 	}
-
 	return nil
 }
 
-func stepWriteAssets(cfg SetupConfig, envFile string) error {
+func stepWriteAssets(cfg SetupConfig, _ string) error {
 	baseDir := env.PlaneDir()
 
 	if err := os.MkdirAll(baseDir, 0o750); err != nil {
@@ -218,34 +214,6 @@ func stepWriteAssets(cfg SetupConfig, envFile string) error {
 	if err := os.WriteFile(cf, composeData, 0o640); err != nil {
 		return fmt.Errorf("failed to write compose file: %w", err)
 	}
-
-	redisDir := filepath.Join(baseDir, "redis")
-	if err := os.MkdirAll(redisDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create redis dir: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(redisDir, "redis.conf"), assets.RedisConf, 0o644); err != nil {
-		return fmt.Errorf("failed to write redis.conf: %w", err)
-	}
-
-	redisPass := ""
-	data, err := os.ReadFile(envFile)
-	if err == nil {
-		for line := range strings.SplitSeq(string(data), "\n") {
-			if after, ok := strings.CutPrefix(line, "REDIS_PASSWORD="); ok {
-				redisPass = after
-				break
-			}
-		}
-	}
-	if redisPass == "" {
-		return fmt.Errorf("REDIS_PASSWORD not found in %s", envFile)
-	}
-
-	acl := fmt.Sprintf("user default off\nuser tidefly on >%s ~* &* +@all\n", redisPass)
-	if err := os.WriteFile(filepath.Join(redisDir, "users.acl"), []byte(acl), 0o644); err != nil {
-		return fmt.Errorf("failed to write users.acl: %w", err)
-	}
-
 	return nil
 }
 
@@ -309,11 +277,12 @@ func stepStartCore(cfg SetupConfig, rt, cf, envFile string) error {
 	if _, err := os.Stat(envFile); err != nil {
 		return fmt.Errorf(".env not found: %s", envFile)
 	}
-	args := []string{cmdCompose, "-f", cf, flagEnvFile, envFile, "up", "-d", svcPostgres, svcRedis, "caddy"}
+	// Redis removed — only postgres + caddy
+	args := []string{cmdCompose, "-f", cf, flagEnvFile, envFile, "up", "-d", svcPostgres, "caddy"}
 	cmd := podmanEnv(exec.CommandContext(context.Background(), rt, args...), rt, cfg.SocketPath, cfg.Environment)
 	out, e := cmd.CombinedOutput()
 	if e != nil {
-		return fmt.Errorf("failed to start core services: %s", strings.TrimSpace(string(out)))
+		return fmt.Errorf("failed to start core manifest: %s", strings.TrimSpace(string(out)))
 	}
 	return nil
 }
@@ -373,7 +342,7 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 			err = stepInstallCrowdSec(cfg, envFile)
 		case strings.HasPrefix(label, "Installing Fail2ban"):
 			err = stepInstallFail2ban()
-		case strings.HasPrefix(label, "Starting Postgres + Redis"):
+		case strings.HasPrefix(label, "Starting Postgres"):
 			err = stepStartInfra(cfg, rt, cf, envFile)
 		case strings.HasPrefix(label, "Starting core"):
 			err = stepStartCore(cfg, rt, cf, envFile)
@@ -383,14 +352,8 @@ func (m *StartModel) runStep(step int) tea.Cmd {
 				container = "tidefly_postgres_dev"
 			}
 			err = stepWaitHealthy(rt, container, 90*time.Second)
-		case strings.HasPrefix(label, "Waiting for Redis"):
-			container := "tidefly_valkey"
-			if cfg.Environment == EnvDevelopmentLocal {
-				container = "tidefly_valkey_dev"
-			}
-			err = stepWaitHealthy(rt, container, 30*time.Second)
 		case strings.HasPrefix(label, "Waiting for backend — press enter"):
-			// intentional no-op: Update() handles this step via waitingForUser + Enter key
+			// no-op: handled via waitingForUser + Enter key
 		case strings.HasPrefix(label, "Starting UI (local)"):
 			err = stepStartLocalUI(cfg)
 		case strings.HasPrefix(label, "Starting backend"):
@@ -584,7 +547,7 @@ func rewriteFile(f *os.File, lines []string) error {
 	return w.Flush()
 }
 
-// stepStartInfra starts only postgres + redis (for dev-local mode).
+// stepStartInfra starts only postgres (for dev-local mode).
 func stepStartInfra(cfg SetupConfig, rt, cf, envFile string) error {
 	if _, err := os.Stat(cf); err != nil {
 		return fmt.Errorf("compose file not found: %s", cf)
@@ -592,7 +555,7 @@ func stepStartInfra(cfg SetupConfig, rt, cf, envFile string) error {
 	if _, err := os.Stat(envFile); err != nil {
 		return fmt.Errorf(".env not found: %s", envFile)
 	}
-	args := []string{cmdCompose, "-f", cf, flagEnvFile, envFile, "up", "-d", svcPostgres, svcRedis}
+	args := []string{cmdCompose, "-f", cf, flagEnvFile, envFile, "up", "-d", svcPostgres}
 	cmd := podmanEnv(exec.CommandContext(context.Background(), rt, args...), rt, cfg.SocketPath, cfg.Environment)
 	out, e := cmd.CombinedOutput()
 	if e != nil {
@@ -609,11 +572,9 @@ func stepStartLocalUI(cfg SetupConfig) error {
 	if _, err := os.Stat(cfg.DevUIPath); err != nil {
 		return fmt.Errorf("tidefly-ui path not found: %s", cfg.DevUIPath)
 	}
-
 	cmd := exec.CommandContext(context.Background(), "pnpm", "dev")
 	cmd.Dir = cfg.DevUIPath
 	cmd.Env = append(os.Environ(), "PUBLIC_API_URL=http://localhost:8181")
-
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start UI: %w (is pnpm installed?)", err)
 	}
@@ -621,8 +582,7 @@ func stepStartLocalUI(cfg SetupConfig) error {
 	return nil
 }
 
-// patchEnvForLocal rewrites DATABASE_URL, REDIS_URL, REDIS_ADDR, TEMPLATES_DIR in the env file
-// replacing Docker service hostnames with localhost for local dev.
+// patchEnvForLocal rewrites DATABASE_URL and TEMPLATES_DIR for local dev.
 func patchEnvForLocal(envFile string) error {
 	home, _ := os.UserHomeDir()
 	localTemplatesDir := filepath.Join(home, ".local", "share", "tidefly-plane", "templates")
@@ -633,8 +593,6 @@ func patchEnvForLocal(envFile string) error {
 	}
 	content := string(data)
 	content = strings.ReplaceAll(content, "@postgres:", "@localhost:")
-	content = strings.ReplaceAll(content, "@redis:", "@localhost:")
-	content = strings.ReplaceAll(content, "REDIS_ADDR=redis:", "REDIS_ADDR=localhost:")
 	content = strings.ReplaceAll(content, "CADDY_ENABLED=true", "CADDY_ENABLED=false")
 
 	re := regexp.MustCompile(`(?m)^TEMPLATES_DIR=.*$`)

@@ -30,7 +30,7 @@ func NewExtras(cfg SetupConfig) *ExtrasModel {
 			},
 			{
 				label:   "Fail2ban",
-				desc:    "Blocks brute-force attacks on SSH and services",
+				desc:    "Blocks brute-force attacks on SSH and manifest",
 				enabled: true,
 			},
 			{
