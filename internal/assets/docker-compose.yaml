@@ -44,6 +44,7 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8181:8181"
+      - "7443:7443"
     env_file:
       - ./.env
     environment:
