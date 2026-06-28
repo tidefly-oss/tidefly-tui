@@ -221,12 +221,6 @@ func stepWriteEnv(cfg SetupConfig, rt, envFile string) error {
 	vars := map[string]string{
 		"RUNTIME_TYPE":   rt,
 		"RUNTIME_SOCKET": cfg.SocketPath,
-		"TEMPLATES_DIR":  "/home/tidefly/templates",
-	}
-
-	if cfg.Environment == EnvDevelopmentLocal {
-		home, _ := os.UserHomeDir()
-		vars["TEMPLATES_DIR"] = filepath.Join(home, ".local", "share", "tidefly-plane", "templates")
 	}
 
 	if rt == "podman" {
@@ -246,6 +240,7 @@ func stepWriteEnv(cfg SetupConfig, rt, envFile string) error {
 		if !cfg.CaddyLater {
 			vars["CADDY_BASE_DOMAIN"] = cfg.CaddyDomain
 			vars["CADDY_ACME_EMAIL"] = cfg.CaddyEmail
+			vars["INSTANCE_URL"] = "https://dashboard." + cfg.CaddyDomain
 			if cfg.CaddyStaging {
 				vars["CADDY_ACME_STAGING"] = boolTrue
 			}
@@ -277,7 +272,6 @@ func stepStartCore(cfg SetupConfig, rt, cf, envFile string) error {
 	if _, err := os.Stat(envFile); err != nil {
 		return fmt.Errorf(".env not found: %s", envFile)
 	}
-	// Redis removed — only postgres + caddy
 	args := []string{cmdCompose, "-f", cf, flagEnvFile, envFile, "up", "-d", svcPostgres, "caddy"}
 	cmd := podmanEnv(exec.CommandContext(context.Background(), rt, args...), rt, cfg.SocketPath, cfg.Environment)
 	out, e := cmd.CombinedOutput()
@@ -582,11 +576,8 @@ func stepStartLocalUI(cfg SetupConfig) error {
 	return nil
 }
 
-// patchEnvForLocal rewrites DATABASE_URL and TEMPLATES_DIR for local dev.
+// patchEnvForLocal rewrites DATABASE_URL for local dev.
 func patchEnvForLocal(envFile string) error {
-	home, _ := os.UserHomeDir()
-	localTemplatesDir := filepath.Join(home, ".local", "share", "tidefly-plane", "templates")
-
 	data, err := os.ReadFile(envFile)
 	if err != nil {
 		return err
@@ -594,9 +585,5 @@ func patchEnvForLocal(envFile string) error {
 	content := string(data)
 	content = strings.ReplaceAll(content, "@postgres:", "@localhost:")
 	content = strings.ReplaceAll(content, "CADDY_ENABLED=true", "CADDY_ENABLED=false")
-
-	re := regexp.MustCompile(`(?m)^TEMPLATES_DIR=.*$`)
-	content = re.ReplaceAllString(content, "TEMPLATES_DIR="+localTemplatesDir)
-
 	return os.WriteFile(envFile, []byte(content), 0o600)
 }

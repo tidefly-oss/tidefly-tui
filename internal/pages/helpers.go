@@ -63,6 +63,9 @@ API_DOCS_ENABLED=%s
 TIDEFLY_ENCRYPTION_KEY=%s
 AGENT_GRPC_PORT=7443
 
+# ── Instance ──────────────────────────────────────────────────────────
+INSTANCE_URL=https://dashboard.example.com
+
 # ── Database / Postgres ──────────────────────────────────────────────
 DATABASE_URL=postgres://tidefly:%s@%s:5432/tidefly?sslmode=disable
 POSTGRES_USER=tidefly
