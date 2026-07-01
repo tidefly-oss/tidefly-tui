@@ -51,7 +51,6 @@ services:
       TIDEFLY_CONTAINER_NAME: tidefly_backend
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${TIDEFLY_DIR:-${HOME}/.local/share/tidefly-plane}/templates:/home/tidefly/templates
     networks:
       - tidefly_internal
       - tidefly_proxy
